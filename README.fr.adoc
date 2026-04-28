@@ -1,0 +1,89 @@
+= crystal-toml
+:source-language: crystal
+:toc: left
+:toc-title: Table des matières
+:toclevels: 2
+
+image:https://github.com/aloli-crystal/crystal-toml/actions/workflows/ci.yml/badge.svg[CI,link=https://github.com/aloli-crystal/crystal-toml/actions/workflows/ci.yml]
+
+English version: link:README.adoc[README.adoc]
+
+Parser et sérialiseur TOML v1.0 pour Crystal, avec **préservation
+des commentaires et de la mise en forme** lors d'un round-trip
+`parse → modification → écriture`. Crystal pur, aucune dépendance
+runtime.
+
+== Pourquoi
+
+L'écosystème Crystal compte aujourd'hui un seul shard TOML,
+https://github.com/crystal-community/TOML.cr[crystal-community/TOML.cr].
+Il ne fait que du parsing (pas de sérialisation), vise la spec
+obsolète TOML v0.5, et aplatit le document dans un `Hash` qui perd
+tous les commentaires, les lignes vides, et l'ordre de déclaration.
+
+Pour des fichiers de configuration ou des coffres de secrets que des
+humains lisent et éditent, c'est inutilisable. `crystal-toml` est
+bâti autour de trois objectifs :
+
+. **Conformité TOML v1.0**, validée contre la suite officielle
+  d'interop https://github.com/toml-lang/toml-test[toml-test].
+. **Round-trip byte-identique** : `TOML.parse(s).to_toml == s` pour
+  tout `s` valide. L'AST garde les trivia (commentaires, espaces,
+  lignes vides, représentation originale des nombres et chaînes)
+  attachés à leur nœud.
+. **Modifications ciblées** qui ne touchent qu'à ce que vous
+  changez. Modifiez une valeur dans une config de 200 lignes et le
+  diff fait une ligne, pas tout le fichier reformaté.
+
+== Installation
+
+Ajoutez la dépendance à votre `shard.yml` :
+
+[source,yaml]
+----
+dependencies:
+  crystal-toml:
+    github: aloli-crystal/crystal-toml
+    version: "~> 0.1"
+----
+
+Puis `shards install`.
+
+== Utilisation
+
+=== Lecture simple (compatible crystal-community/TOML.cr)
+
+[source,crystal]
+----
+require "crystal-toml"
+
+hash = TOML.parse_to_hash(File.read("config.toml"))
+puts hash["database"]["host"]
+----
+
+=== Édition avec préservation des commentaires
+
+[source,crystal]
+----
+require "crystal-toml"
+
+doc = TOML.parse(File.read("vault.toml"))
+
+doc.set("DATABASE_URL", "postgres://new...")
+doc.set_with_comment("API_KEY", "ak_...", " rotated 2026-04-28")
+doc.delete("OLD_TOKEN")
+
+# Commentaires, lignes vides et ordre des clés sont tous préservés.
+File.write("vault.toml", doc.to_toml)
+----
+
+== État du projet
+
+Ce shard est **en développement actif**. La version v0.1.0 n'est pas
+encore taguée. Voir `CRYSTAL-TOML-SPECS.adoc` dans le repo voisin
+`prod-crystal/` pour la spécification fonctionnelle et technique
+complète.
+
+== Licence
+
+MIT — voir link:LICENSE[LICENSE].

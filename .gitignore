@@ -1,0 +1,6 @@
+/bin/
+/lib/
+/.shards/
+*.dwarf
+/shard.lock
+.DS_Store

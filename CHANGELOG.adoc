@@ -1,0 +1,18 @@
+= Changelog
+:toc: left
+:toc-title: Versions
+:toclevels: 2
+
+== Unreleased
+
+Initial scaffolding for the v0.1.0 release. Targets TOML v1.0.0 and
+ships two API surfaces:
+
+* `TOML.parse_to_hash(string)` — drop-in replacement for the
+  `crystal-community/TOML.cr` API. Loses comments and formatting.
+* `TOML.parse(string)` — returns a `TOML::Document` AST that
+  preserves comments, blank lines, and the original byte-level
+  formatting for byte-identical round-trips.
+
+See `CRYSTAL-TOML-SPECS.adoc` (sibling repo `prod-crystal/`) for the
+full specification.
