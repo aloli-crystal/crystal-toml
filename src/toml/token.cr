@@ -18,15 +18,13 @@ module TOML
     Comment    # # ...... (without trailing newline)
 
     # Structural punctuation.
-    Equal          # =
-    Dot            # . (used inside dotted keys and dotted table headers)
-    Comma          # ,
-    LBracket       # [
-    RBracket       # ]
-    LDoubleBracket # [[
-    RDoubleBracket # ]]
-    LBrace         # {
-    RBrace         # }
+    Equal    # =
+    Dot      # . (used inside dotted keys and dotted table headers)
+    Comma    # ,
+    LBracket # [   (parser disambiguates table vs array-of-tables vs nested array)
+    RBracket # ]
+    LBrace   # {
+    RBrace   # }
 
     # Strings (delimiters included in the raw text).
     BasicString            # "..."

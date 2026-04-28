@@ -249,6 +249,100 @@ describe TOML::Parser do
   end
 
   # ------------------------------------------------------------------
+  # Arrays
+  # ------------------------------------------------------------------
+
+  describe "arrays" do
+    it "parses an empty array" do
+      v = doc("a = []").nodes[0].as(TOML::KeyValueLine).value.as(TOML::ArrayValue)
+      v.items.should be_empty
+      v.raw.should eq("[]")
+    end
+
+    it "parses a flat array of integers" do
+      v = doc("a = [1, 2, 3]").nodes[0].as(TOML::KeyValueLine).value.as(TOML::ArrayValue)
+      v.items.size.should eq(3)
+      v.items.map(&.as(TOML::IntegerValue).int_value).should eq([1_i64, 2_i64, 3_i64])
+    end
+
+    it "parses a heterogeneous array" do
+      v = doc(%(a = [1, "two", true])).nodes[0].as(TOML::KeyValueLine).value.as(TOML::ArrayValue)
+      v.items[0].should be_a(TOML::IntegerValue)
+      v.items[1].should be_a(TOML::StringValue)
+      v.items[2].should be_a(TOML::BooleanValue)
+    end
+
+    it "accepts a trailing comma" do
+      v = doc("a = [1, 2, 3,]").nodes[0].as(TOML::KeyValueLine).value.as(TOML::ArrayValue)
+      v.items.size.should eq(3)
+      v.raw.should eq("[1, 2, 3,]")
+    end
+
+    it "parses a multi-line array with comments" do
+      src = <<-TOML
+        a = [
+          1,    # one
+          2,    # two
+          3,
+        ]
+        TOML
+      v = doc(src + "\n").nodes[0].as(TOML::KeyValueLine).value.as(TOML::ArrayValue)
+      v.items.size.should eq(3)
+    end
+
+    it "round-trips a multi-line array byte-identically" do
+      src = "a = [\n  1,    # one\n  2,    # two\n  3,\n]\n"
+      round_trip!(src)
+    end
+
+    it "parses nested arrays" do
+      v = doc("a = [[1, 2], [3, 4]]").nodes[0].as(TOML::KeyValueLine).value.as(TOML::ArrayValue)
+      v.items.size.should eq(2)
+      inner = v.items[0].as(TOML::ArrayValue)
+      inner.items.size.should eq(2)
+      inner.items.map(&.as(TOML::IntegerValue).int_value).should eq([1_i64, 2_i64])
+    end
+  end
+
+  # ------------------------------------------------------------------
+  # Inline tables
+  # ------------------------------------------------------------------
+
+  describe "inline tables" do
+    it "parses an empty inline table" do
+      v = doc("t = {}").nodes[0].as(TOML::KeyValueLine).value.as(TOML::InlineTableValue)
+      v.pairs.should be_empty
+      v.raw.should eq("{}")
+    end
+
+    it "parses a flat inline table" do
+      v = doc(%(t = { name = "Tom", age = 30 })).nodes[0].as(TOML::KeyValueLine).value.as(TOML::InlineTableValue)
+      v.pairs.size.should eq(2)
+      v.pairs[0][0].should eq("name")
+      v.pairs[0][1].as(TOML::StringValue).decoded.should eq("Tom")
+      v.pairs[1][0].should eq("age")
+      v.pairs[1][1].as(TOML::IntegerValue).int_value.should eq(30_i64)
+    end
+
+    it "rejects a trailing comma" do
+      expect_raises(TOML::ParseError, /trailing comma/) do
+        doc(%(t = { a = 1, }))
+      end
+    end
+
+    it "rejects a newline inside an inline table" do
+      expect_raises(TOML::ParseError) do
+        doc("t = { a = 1,\n b = 2 }")
+      end
+    end
+
+    it "round-trips an inline table byte-identically" do
+      round_trip!(%(t = { a = 1, b = "two", c = [1, 2] }
+))
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Round-trip preservation
   # ------------------------------------------------------------------
 

@@ -43,10 +43,17 @@ module TOML
     @source : String
     @lexer : Lexer
     @lookahead : Deque(Token)
+    # Stack of active capture builders. Every token consumed while
+    # at least one capture is active is appended to *all* of them,
+    # so a nested capture (e.g. an array inside an array) feeds
+    # both its own buffer and its enclosing one. Used to assemble
+    # the byte-identical `raw` of arrays and inline tables.
+    @captures : Array(String::Builder)
 
     def initialize(@source : String)
       @lexer = Lexer.new(@source)
       @lookahead = Deque(Token).new
+      @captures = [] of String::Builder
     end
 
     def parse : Document
@@ -73,10 +80,12 @@ module TOML
           tok = consume
           term = consume_line_terminator
           nodes << CommentLine.new(leading_ws + tok.raw + term)
-        when TokenKind::LDoubleBracket
-          nodes << parse_array_of_tables_header(leading_ws)
         when TokenKind::LBracket
-          nodes << parse_table_header(leading_ws)
+          if peek(1).kind.l_bracket?
+            nodes << parse_array_of_tables_header(leading_ws)
+          else
+            nodes << parse_table_header(leading_ws)
+          end
         else
           nodes << parse_key_value_line(leading_ws)
         end
@@ -116,14 +125,13 @@ module TOML
     end
 
     private def parse_array_of_tables_header(leading_ws : String) : ArrayOfTablesLine
-      consume # the [[
+      consume_expect(TokenKind::LBracket, "expected '[' (first of '[[')")
+      consume_expect(TokenKind::LBracket, "expected '[' (second of '[[')")
       inner_prefix = consume_whitespace_run
       key = parse_key
       inner_suffix = consume_whitespace_run
-      tok = consume
-      unless tok.kind.r_double_bracket?
-        error!(tok, "expected ']]' to close array-of-tables header")
-      end
+      consume_expect(TokenKind::RBracket, "expected ']' (first of ']]')")
+      consume_expect(TokenKind::RBracket, "expected ']' (second of ']]')")
       trailing = consume_trailing_raw
       ArrayOfTablesLine.new(leading_ws, key, inner_prefix, inner_suffix, trailing)
     end
@@ -196,21 +204,125 @@ module TOML
     # ------------------------------------------------------------------
 
     private def parse_value : Value
-      tok = consume
-      case tok.kind
-      when .basic_string?
-        ValueDecoder.decode_basic_string(tok.raw, tok.line, tok.column)
-      when .multiline_basic_string?
-        ValueDecoder.decode_multiline_basic_string(tok.raw, tok.line, tok.column)
-      when .literal_string?
-        ValueDecoder.decode_literal_string(tok.raw, tok.line, tok.column)
-      when .multiline_literal_string?
-        ValueDecoder.decode_multiline_literal_string(tok.raw, tok.line, tok.column)
-      when .bare_key_or_atom?
-        parse_atom_or_float(tok)
+      case peek.kind
+      when .l_bracket?
+        parse_array
+      when .l_brace?
+        parse_inline_table
       else
-        error!(tok, "expected a value")
+        tok = consume
+        case tok.kind
+        when .basic_string?
+          ValueDecoder.decode_basic_string(tok.raw, tok.line, tok.column)
+        when .multiline_basic_string?
+          ValueDecoder.decode_multiline_basic_string(tok.raw, tok.line, tok.column)
+        when .literal_string?
+          ValueDecoder.decode_literal_string(tok.raw, tok.line, tok.column)
+        when .multiline_literal_string?
+          ValueDecoder.decode_multiline_literal_string(tok.raw, tok.line, tok.column)
+        when .bare_key_or_atom?
+          parse_atom_or_float(tok)
+        else
+          error!(tok, "expected a value")
+        end
       end
+    end
+
+    # ------------------------------------------------------------------
+    # Arrays
+    # ------------------------------------------------------------------
+
+    # `[ value, value, ... ]`. Items may be separated by any
+    # combination of whitespace, newlines and comments, and a
+    # trailing comma is allowed. Items keep their own raw text
+    # (preserved inside `ArrayValue#raw` for byte-identical
+    # round-trips); the trivia between items is preserved only as
+    # part of the array's own `raw`, not on the items.
+    private def parse_array : ArrayValue
+      items = [] of Value
+      raw = with_capture do
+        consume_expect(TokenKind::LBracket, "expected '[' to open array")
+
+        loop do
+          consume_array_trivia
+          break if peek.kind.r_bracket?
+          items << parse_value
+          consume_array_trivia
+          if peek.kind.comma?
+            consume
+          elsif !peek.kind.r_bracket?
+            error!(peek, "expected ',' or ']' in array, got #{peek.kind}")
+          end
+        end
+        consume_expect(TokenKind::RBracket, "expected ']' to close array")
+      end
+      ArrayValue.new(raw, items)
+    end
+
+    # Whitespace, newlines and comments are all allowed (and
+    # ignored as content) between array items.
+    private def consume_array_trivia : Nil
+      loop do
+        case peek.kind
+        when .whitespace?, .newline?, .comment?
+          consume
+        else
+          return
+        end
+      end
+    end
+
+    # ------------------------------------------------------------------
+    # Inline tables
+    # ------------------------------------------------------------------
+
+    # `{ key = value, key = value }`. Strict TOML 1.0 form: no
+    # newlines inside, comma-separated, no trailing comma. An
+    # empty inline table `{}` is legal.
+    private def parse_inline_table : InlineTableValue
+      pairs = [] of {String, Value}
+      raw = with_capture do
+        consume_expect(TokenKind::LBrace, "expected '{' to open inline table")
+        consume_inline_trivia
+        unless peek.kind.r_brace?
+          loop do
+            key = parse_key
+            consume_inline_trivia
+            consume_expect(TokenKind::Equal, "expected '=' in inline table")
+            consume_inline_trivia
+            value = parse_value
+            pairs << {key.path.join('.'), value}
+            consume_inline_trivia
+            if peek.kind.comma?
+              consume
+              consume_inline_trivia
+              if peek.kind.r_brace?
+                error!(peek, "trailing comma not allowed in inline table")
+              end
+            else
+              break
+            end
+          end
+        end
+        consume_expect(TokenKind::RBrace, "expected '}' to close inline table")
+      end
+      InlineTableValue.new(raw, pairs)
+    end
+
+    # Inline tables are strictly single-line: only spaces/tabs may
+    # appear between elements (no newlines, no comments).
+    private def consume_inline_trivia : Nil
+      while peek.kind.whitespace?
+        consume
+      end
+    end
+
+    private def consume_expect(kind : TokenKind, message : String) : Token
+      tok = consume
+      unless tok.kind == kind
+        error!(tok, message)
+      end
+      tok
     end
 
     # The lexer emits values that may span multiple tokens because
@@ -312,7 +424,24 @@ module TOML
     end
 
     private def consume : Token
-      @lookahead.empty? ? @lexer.next_token : @lookahead.shift
+      tok = @lookahead.empty? ? @lexer.next_token : @lookahead.shift
+      @captures.each &.<< tok.raw
+      tok
+    end
+
+    # Run *block* with a fresh capture buffer pushed onto the
+    # stack; returns the captured string. Used by array and
+    # inline-table parsers to obtain the byte-exact source slice
+    # they consumed.
+    private def with_capture(& : -> _) : String
+      builder = String::Builder.new
+      @captures << builder
+      begin
+        yield
+      ensure
+        @captures.pop
+      end
+      builder.to_s
     end
 
     private def error!(tok : Token, message : String) : NoReturn

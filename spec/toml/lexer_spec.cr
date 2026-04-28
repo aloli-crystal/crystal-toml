@@ -88,11 +88,13 @@ describe TOML::Lexer do
       ])
     end
 
-    it "recognises [[ and ]] when adjacent" do
+    it "always emits one LBracket per [, even when adjacent" do
       kinds("[[x]]").should eq([
-        TOML::TokenKind::LDoubleBracket,
+        TOML::TokenKind::LBracket,
+        TOML::TokenKind::LBracket,
         TOML::TokenKind::BareKeyOrAtom,
-        TOML::TokenKind::RDoubleBracket,
+        TOML::TokenKind::RBracket,
+        TOML::TokenKind::RBracket,
         TOML::TokenKind::EOF,
       ])
     end
@@ -308,11 +310,13 @@ describe TOML::Lexer do
       ])
     end
 
-    it "tokenises an array-of-tables header" do
+    it "tokenises an array-of-tables header as two LBracket / two RBracket" do
       kinds("[[products]]").should eq([
-        TOML::TokenKind::LDoubleBracket,
+        TOML::TokenKind::LBracket,
+        TOML::TokenKind::LBracket,
         TOML::TokenKind::BareKeyOrAtom,
-        TOML::TokenKind::RDoubleBracket,
+        TOML::TokenKind::RBracket,
+        TOML::TokenKind::RBracket,
         TOML::TokenKind::EOF,
       ])
     end

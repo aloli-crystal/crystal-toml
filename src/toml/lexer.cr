@@ -24,9 +24,12 @@ module TOML
   #     * The colon `:` is part of an atom (so a time value like
   #       `07:32:00` is a single `Atom`).
   #
-  # * **`[[` and `]]` are recognised as single tokens** when the two
-  #   brackets are adjacent (no whitespace between them). `[ [` is
-  #   two `LBracket` separated by `Whitespace`.
+  # * **Brackets are always single-character.** `[` and `]` are
+  #   emitted one at a time even when adjacent. The parser
+  #   disambiguates `[[products]]` (array-of-tables header) from
+  #   `[[1, 2]]` (nested array) by position: a line that starts
+  #   with two consecutive `LBracket` tokens is an AoT header,
+  #   anywhere else they open two arrays.
   #
   # * **Line endings.** `\n` and `\r\n` are both valid newlines. A
   #   bare `\r` not followed by `\n` is *not* a TOML line ending and
@@ -86,9 +89,11 @@ module TOML
         advance
         Token.new(TokenKind::Comma, ",", start_line, start_column)
       when '['.ord
-        consume_lbracket(start_line, start_column)
+        advance
+        Token.new(TokenKind::LBracket, "[", start_line, start_column)
       when ']'.ord
-        consume_rbracket(start_line, start_column)
+        advance
+        Token.new(TokenKind::RBracket, "]", start_line, start_column)
       when '{'.ord
         advance
         Token.new(TokenKind::LBrace, "{", start_line, start_column)
@@ -180,30 +185,6 @@ module TOML
         advance
       end
       Token.new(TokenKind::Comment, slice(start_pos), start_line, start_column)
-    end
-
-    # --- brackets ----------------------------------------------------
-
-    private def consume_lbracket(start_line, start_column) : Token
-      if peek_byte == '['.ord
-        @pos += 2
-        @column += 2
-        Token.new(TokenKind::LDoubleBracket, "[[", start_line, start_column)
-      else
-        advance
-        Token.new(TokenKind::LBracket, "[", start_line, start_column)
-      end
-    end
-
-    private def consume_rbracket(start_line, start_column) : Token
-      if peek_byte == ']'.ord
-        @pos += 2
-        @column += 2
-        Token.new(TokenKind::RDoubleBracket, "]]", start_line, start_column)
-      else
-        advance
-        Token.new(TokenKind::RBracket, "]", start_line, start_column)
-      end
     end
 
     # --- strings -----------------------------------------------------
