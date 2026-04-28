@@ -34,9 +34,16 @@ module TOML
   # and the original byte-level formatting, so a round-trip
   # `TOML.parse(s).to_toml == s` for any unmodified `s`.
   #
+  # The parse runs a second semantic-validation pass after the
+  # syntactic one (duplicate keys, table redefinitions, etc.); if
+  # you want to skip that — e.g. to inspect a malformed AST during
+  # debugging — use `Parser.new(source).parse` directly.
+  #
   # Raises `TOML::ParseError` on invalid input.
   def self.parse(source : String) : Document
-    Parser.new(source).parse
+    doc = Parser.new(source).parse
+    HashBuilder.build(doc) # validates semantics; raises ParseError on dup keys
+    doc
   end
 
   # Parses a TOML v1.0 document and returns a plain

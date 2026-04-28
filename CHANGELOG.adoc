@@ -3,16 +3,43 @@
 :toc-title: Versions
 :toclevels: 2
 
-== Unreleased
+== Unreleased (v0.1.0 candidate)
 
-Initial scaffolding for the v0.1.0 release. Targets TOML v1.0.0 and
-ships two API surfaces:
+Initial implementation of TOML v1.0 in pure Crystal, with comment
+and formatting preservation across `parse → modify → write`
+round-trips.
 
-* `TOML.parse_to_hash(string)` — drop-in replacement for the
-  `crystal-community/TOML.cr` API. Loses comments and formatting.
-* `TOML.parse(string)` — returns a `TOML::Document` AST that
+Public API
+----------
+
+* `TOML.parse(string) : TOML::Document` — parse to a rich AST that
   preserves comments, blank lines, and the original byte-level
-  formatting for byte-identical round-trips.
+  formatting. Round-trips byte-identical for unmodified input.
+* `TOML.parse_to_hash(string) : Hash(String, TOML::Type)` —
+  drop-in replacement for `crystal-community/TOML.cr`. Discards
+  trivia, returns a plain hash.
+* `Document` typed lookup: `#string?`, `#int?`, `#float?`,
+  `#bool?`, `#datetime?`, `#time_of_day?` (and raise-on-missing
+  variants without `?`), `#has_key?`, `#get?`, `#get`.
+* `Document` editing: `#set(key, value)`,
+  `#set_with_comment(key, value, comment)`, `#delete(key)` —
+  preserves the surrounding line formatting on update.
+
+Conformance against `toml-lang/toml-test` v2.1.0 (TOML v1.0)
+-----------------------------------------------------------
+
+* **Valid tests   : 191 / 205  (93.2%)**
+* **Invalid tests : 432 / 473  (91.3%)**
+* **Overall      : 623 / 678  (91.9%)**
+
+Remaining gaps (tracked, will be addressed before v0.1.0 is
+tagged) :
+
+* Validation of dotted-key vs. table-header conflicts and inline
+  table extension after declaration.
+* Stricter UTF-8 / control-character rejection in strings.
+* Edge cases on multi-line basic strings with embedded triple
+  quotes and on RFC 3339 leap-year boundaries.
 
 See `CRYSTAL-TOML-SPECS.adoc` (sibling repo `prod-crystal/`) for the
 full specification.

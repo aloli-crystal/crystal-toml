@@ -178,57 +178,54 @@ module TOML
     private def decode_number(raw : String) : Value?
       return nil if raw.empty?
 
-      # Hex / oct / bin integers (no sign permitted).
+      # Hex / oct / bin integers (no sign permitted, no
+      # underscore directly after the prefix, lowercase prefix
+      # only per TOML 1.0).
       if raw.size > 2 && raw[0] == '0'
         case raw[1]
-        when 'x', 'X' then return decode_int_radix(raw, 2, 16)
-        when 'o', 'O' then return decode_int_radix(raw, 2, 8)
-        when 'b', 'B' then return decode_int_radix(raw, 2, 2)
+        when 'x' then return decode_int_radix(raw, 2, 16)
+        when 'o' then return decode_int_radix(raw, 2, 8)
+        when 'b' then return decode_int_radix(raw, 2, 2)
+        when 'X', 'O', 'B'
+          # Uppercase prefix not allowed.
+          return nil
         end
       end
 
-      # Decimal integer or exponential int form. Float parsing is
-      # not done here — the parser handles `Atom Dot Atom` to build
-      # a float string. We accept exponentials like `1e10` as
-      # floats here since they are atom-only.
-      cleaned = strip_underscores_strict(raw)
-      return nil unless cleaned
+      # Strip an optional sign for leading-zero detection.
+      body_start = (raw[0] == '+' || raw[0] == '-') ? 1 : 0
+      body = raw[body_start..]
+      return nil if body.empty?
 
-      if cleaned.includes?('e') || cleaned.includes?('E')
-        f = cleaned.to_f64?
-        return f ? FloatValue.new(raw, f) : nil
+      # Reject leading zeros on a multi-digit decimal literal: `07`,
+      # `+007`, `-01` are all invalid TOML integers.
+      if body.size > 1 && body[0] == '0' && body[1].ascii_number?
+        return nil
       end
 
-      # Pure integer with optional sign.
-      i = cleaned.to_i64?
-      return IntegerValue.new(raw, i) if i
+      # Exponential form: must be a float, with strict `_` rules.
+      if body.includes?('e') || body.includes?('E')
+        return decode_float(raw)
+      end
 
-      # Could be a leading-zero non-numeric (date components etc.)
-      # — return nil so the caller can keep trying.
-      nil
-    end
-
-    private def decode_int_radix(raw : String, body_start : Int32, radix : Int32) : IntegerValue?
-      body = raw[body_start..]
-      cleaned = strip_underscores_strict(body)
+      # Underscore must not be the first character of the body.
+      return nil if body[0] == '_'
+      cleaned = strip_underscores_decimal(body, body_start > 0 ? raw[0..0] : "")
       return nil unless cleaned
-      return nil if cleaned.empty?
-      i = cleaned.to_i64?(radix)
+      i = cleaned.to_i64?
       i ? IntegerValue.new(raw, i) : nil
     end
 
-    # Strip underscores from a numeric literal, but only if every
-    # underscore is between two digits (valid TOML form). Returns
-    # nil otherwise so the caller can fall through.
-    private def strip_underscores_strict(s : String) : String?
-      return s unless s.includes?('_')
+    private def strip_underscores_decimal(body : String, sign : String) : String?
+      # Each `_` must lie between two ASCII digits.
       result = String::Builder.new
-      chars = s.chars
+      result << sign
+      chars = body.chars
       chars.each_with_index do |c, i|
         if c == '_'
           prev = chars[i - 1]?
           nxt = chars[i + 1]?
-          return nil unless prev && nxt && digit_in_radix?(prev) && digit_in_radix?(nxt)
+          return nil unless prev && nxt && prev.ascii_number? && nxt.ascii_number?
         else
           result << c
         end
@@ -236,19 +233,81 @@ module TOML
       result.to_s
     end
 
-    private def digit_in_radix?(c : Char) : Bool
-      c.ascii_alphanumeric?
+    private def decode_int_radix(raw : String, body_start : Int32, radix : Int32) : IntegerValue?
+      body = raw[body_start..]
+      return nil if body.empty?
+      # Underscore must not be the first character of the body
+      # (would be `0x_DEAD`, etc.).
+      return nil if body[0] == '_'
+      cleaned = strip_underscores_radix(body, radix)
+      return nil unless cleaned
+      return nil if cleaned.empty?
+      i = cleaned.to_i64?(radix)
+      i ? IntegerValue.new(raw, i) : nil
+    end
+
+    private def strip_underscores_radix(body : String, radix : Int32) : String?
+      result = String::Builder.new
+      chars = body.chars
+      chars.each_with_index do |c, i|
+        if c == '_'
+          prev = chars[i - 1]?
+          nxt = chars[i + 1]?
+          return nil unless prev && nxt && radix_digit?(prev, radix) && radix_digit?(nxt, radix)
+        else
+          result << c
+        end
+      end
+      result.to_s
+    end
+
+    private def radix_digit?(c : Char, radix : Int32) : Bool
+      case radix
+      when  2 then c == '0' || c == '1'
+      when  8 then c >= '0' && c <= '7'
+      when 16 then c.ascii_number? || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+      else         c.ascii_number?
+      end
     end
 
     # Build a `FloatValue` from the textual form `int_part . frac_part`
     # or with an exponent. Used by the parser when it has reassembled
     # the parts that the lexer emitted as `Atom Dot Atom`.
     def decode_float(raw : String) : FloatValue?
-      cleaned = strip_underscores_strict(raw)
-      return nil unless cleaned
-      # Reject anything that is not parseable as a Float64.
-      f = cleaned.to_f64?
+      return nil if raw.empty?
+
+      sign_offset = (raw[0] == '+' || raw[0] == '-') ? 1 : 0
+      body = raw[sign_offset..]
+      return nil if body.empty?
+
+      # Reject leading-zero integer parts: `07.5`, `+02.0`.
+      if body.size > 1 && body[0] == '0' && body[1].ascii_number?
+        return nil
+      end
+
+      # Each `_` must lie between two ASCII digits — anywhere in the
+      # mantissa or the exponent. Reject `_e10`, `1_e10`, `1e_10`,
+      # `1e10_`, `1__0`, `_1.0`, `1.0_`.
+      validated = validate_float_underscores(raw)
+      return nil unless validated
+
+      f = validated.to_f64?
       f ? FloatValue.new(raw, f) : nil
+    end
+
+    private def validate_float_underscores(raw : String) : String?
+      chars = raw.chars
+      result = String::Builder.new
+      chars.each_with_index do |c, i|
+        if c == '_'
+          prev = chars[i - 1]?
+          nxt = chars[i + 1]?
+          return nil unless prev && nxt && prev.ascii_number? && nxt.ascii_number?
+        else
+          result << c
+        end
+      end
+      result.to_s
     end
 
     # ------------------------------------------------------------------

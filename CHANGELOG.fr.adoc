@@ -3,17 +3,45 @@
 :toc-title: Versions
 :toclevels: 2
 
-== Non publié
+== Non publié (candidat v0.1.0)
 
-Mise en place initiale en vue de la version v0.1.0. Cible TOML v1.0.0
-et expose deux surfaces d'API :
+Première implémentation de TOML v1.0 en Crystal pur, avec
+préservation des commentaires et de la mise en forme lors d'un
+round-trip `parse → modification → écriture`.
 
-* `TOML.parse_to_hash(string)` — remplaçant compatible de l'API
-  `crystal-community/TOML.cr`. Perd les commentaires et la mise en
-  forme.
-* `TOML.parse(string)` — retourne un AST `TOML::Document` qui
-  préserve les commentaires, les lignes vides, et la mise en forme
-  originale au niveau byte pour un round-trip byte-identique.
+API publique
+------------
+
+* `TOML.parse(string) : TOML::Document` — parsing vers un AST
+  riche qui préserve commentaires, lignes vides et formatage
+  byte-level d'origine. Round-trip byte-identique pour input non
+  modifié.
+* `TOML.parse_to_hash(string) : Hash(String, TOML::Type)` —
+  remplaçant compatible de `crystal-community/TOML.cr`. Perd
+  les trivia, retourne un hash plat.
+* Lecture typée sur `Document` : `#string?`, `#int?`,
+  `#float?`, `#bool?`, `#datetime?`, `#time_of_day?` (et
+  variantes sans `?` qui lèvent une erreur si absent),
+  `#has_key?`, `#get?`, `#get`.
+* Édition sur `Document` : `#set(key, value)`,
+  `#set_with_comment(key, value, comment)`, `#delete(key)` —
+  préserve le formatage de la ligne autour à la mise à jour.
+
+Conformité avec `toml-lang/toml-test` v2.1.0 (TOML v1.0)
+-------------------------------------------------------
+
+* **Tests valid   : 191 / 205  (93,2 %)**
+* **Tests invalid : 432 / 473  (91,3 %)**
+* **Total        : 623 / 678  (91,9 %)**
+
+Manques restants (suivis, à traiter avant le tag v0.1.0) :
+
+* Validation des conflits entre dotted-keys et headers de tables,
+  extension d'inline table après déclaration.
+* Rejet plus strict de l'UTF-8 invalide et des caractères de
+  contrôle dans les strings.
+* Edge cases sur les multi-line basic strings avec triples-quotes
+  internes, et bornes RFC 3339 sur les années bissextiles.
 
 Voir `CRYSTAL-TOML-SPECS.adoc` (dans le repo voisin `prod-crystal/`)
 pour la spécification complète.

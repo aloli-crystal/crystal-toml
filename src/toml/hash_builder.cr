@@ -21,12 +21,20 @@ module TOML
     def build(document : Document) : Hash(String, Type)
       root = {} of String => Type
       current = root
+      # Tables that have been *explicitly* declared via `[a.b]` —
+      # re-declaring one is forbidden in TOML v1.0.
+      explicit_tables = Set(String).new
 
       document.nodes.each do |node|
         case node
         when KeyValueLine
           insert_key_value(current, node.key.path, value_to_type(node.value), node.key)
         when TableHeaderLine
+          path_key = node.key.path.join("\x00")
+          if explicit_tables.includes?(path_key)
+            raise ParseError.new("table #{node.key.raw} is defined more than once", 0, 0)
+          end
+          explicit_tables << path_key
           current = ensure_table(root, node.key.path)
         when ArrayOfTablesLine
           current = ensure_array_of_tables(root, node.key.path)
@@ -136,6 +144,21 @@ module TOML
       end
     end
 
+    private def insert_path(h : Hash(String, Type), path : Array(String), value : Type) : Nil
+      target = h
+      path[0..-2].each do |seg|
+        sub = target[seg]?
+        if sub.is_a?(Hash(String, Type))
+          target = sub
+        else
+          new_table = {} of String => Type
+          target[seg] = new_table
+          target = new_table
+        end
+      end
+      target[path[-1]] = value
+    end
+
     private def value_to_type(value : Value) : Type
       case value
       when StringValue         then value.decoded
@@ -149,7 +172,7 @@ module TOML
       when ArrayValue          then value.items.map { |item| value_to_type(item).as(Type) }
       when InlineTableValue
         h = {} of String => Type
-        value.pairs.each { |(k, v)| h[k] = value_to_type(v) }
+        value.pairs.each { |(path, v)| insert_path(h, path, value_to_type(v)) }
         h
       else
         raise "BUG: unknown value type #{value.class}"

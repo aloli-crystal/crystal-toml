@@ -116,12 +116,14 @@ module TOML
 
   # `{ key = "val", key2 = 42 }`. Inline tables are by spec
   # immutable once written — modification would require deletion and
-  # re-insertion. We store them as a parallel list of (key, value)
-  # pairs to preserve declaration order.
+  # re-insertion. We store them as a parallel list of (path, value)
+  # entries where `path` is the array of decoded key segments
+  # (length > 1 for dotted keys like `a.b = 1`), to preserve both
+  # declaration order and the dotted structure.
   class InlineTableValue < Value
-    getter pairs : Array({String, Value})
+    getter pairs : Array({Array(String), Value})
 
-    def initialize(raw : String, @pairs : Array({String, Value}))
+    def initialize(raw : String, @pairs : Array({Array(String), Value}))
       super(raw)
     end
   end

@@ -318,10 +318,24 @@ describe TOML::Parser do
     it "parses a flat inline table" do
       v = doc(%(t = { name = "Tom", age = 30 })).nodes[0].as(TOML::KeyValueLine).value.as(TOML::InlineTableValue)
       v.pairs.size.should eq(2)
-      v.pairs[0][0].should eq("name")
+      v.pairs[0][0].should eq(["name"])
       v.pairs[0][1].as(TOML::StringValue).decoded.should eq("Tom")
-      v.pairs[1][0].should eq("age")
+      v.pairs[1][0].should eq(["age"])
       v.pairs[1][1].as(TOML::IntegerValue).int_value.should eq(30_i64)
+    end
+
+    it "parses an inline table with a dotted key" do
+      v = doc(%(t = { a.b = 1, c = 2 })).nodes[0].as(TOML::KeyValueLine).value.as(TOML::InlineTableValue)
+      v.pairs.size.should eq(2)
+      v.pairs[0][0].should eq(["a", "b"])
+      v.pairs[1][0].should eq(["c"])
+    end
+
+    it "expands dotted-key inline tables in parse_to_hash" do
+      h = TOML.parse_to_hash(%(t = { a.b = 1, c = 2 }))
+      t = h["t"].as(Hash(String, TOML::Type))
+      t["a"].as(Hash(String, TOML::Type))["b"].should eq(1_i64)
+      t["c"].should eq(2_i64)
     end
 
     it "rejects a trailing comma" do

@@ -115,13 +115,28 @@ module TOML
       end
     end
 
+    private def insert_tree_path(h : Hash(String, Tree), path : Array(String), value : Tree) : Nil
+      target = h
+      path[0..-2].each do |seg|
+        sub = target[seg]?
+        if sub.is_a?(Hash(String, Tree))
+          target = sub
+        else
+          new_table = {} of String => Tree
+          target[seg] = new_table
+          target = new_table
+        end
+      end
+      target[path[-1]] = value
+    end
+
     private def value_to_tree(v : Value) : Tree
       case v
       when ArrayValue
         v.items.map { |item| value_to_tree(item).as(Tree) }
       when InlineTableValue
         h = {} of String => Tree
-        v.pairs.each { |(k, sub)| h[k] = value_to_tree(sub) }
+        v.pairs.each { |(path, sub)| insert_tree_path(h, path, value_to_tree(sub)) }
         h
       else
         v

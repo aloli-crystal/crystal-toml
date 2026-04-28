@@ -280,7 +280,7 @@ module TOML
     # newlines inside, comma-separated, no trailing comma. An
     # empty inline table `{}` is legal.
     private def parse_inline_table : InlineTableValue
-      pairs = [] of {String, Value}
+      pairs = [] of {Array(String), Value}
       raw = with_capture do
         consume_expect(TokenKind::LBrace, "expected '{' to open inline table")
         consume_inline_trivia
@@ -291,7 +291,7 @@ module TOML
             consume_expect(TokenKind::Equal, "expected '=' in inline table")
             consume_inline_trivia
             value = parse_value
-            pairs << {key.path.join('.'), value}
+            pairs << {key.path, value}
             consume_inline_trivia
             if peek.kind.comma?
               consume
