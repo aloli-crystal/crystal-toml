@@ -1,4 +1,7 @@
 require "./toml/version"
+require "./toml/parse_error"
+require "./toml/token"
+require "./toml/lexer"
 
 # TOML v1.0 parser and serializer for Crystal, with comment-and-format
 # preservation across parse → modify → write round-trips.
