@@ -120,6 +120,82 @@ describe TOML::Parser do
   end
 
   # ------------------------------------------------------------------
+  # Datetimes
+  # ------------------------------------------------------------------
+
+  describe "datetimes" do
+    it "parses a local date" do
+      v = doc("d = 1979-05-27").nodes[0].as(TOML::KeyValueLine).value
+      v.should be_a(TOML::LocalDateValue)
+      ld = v.as(TOML::LocalDateValue)
+      ld.date.year.should eq(1979)
+      ld.date.month.should eq(5)
+      ld.date.day.should eq(27)
+    end
+
+    it "parses a local time without fraction" do
+      v = doc("t = 07:32:00").nodes[0].as(TOML::KeyValueLine).value
+      v.should be_a(TOML::LocalTimeValue)
+      span = v.as(TOML::LocalTimeValue).time_of_day
+      span.should eq(Time::Span.new(hours: 7, minutes: 32, seconds: 0))
+    end
+
+    it "parses a local time with fractional seconds" do
+      v = doc("t = 07:32:00.999").nodes[0].as(TOML::KeyValueLine).value.as(TOML::LocalTimeValue)
+      span = v.time_of_day
+      span.should eq(
+        Time::Span.new(hours: 7, minutes: 32, seconds: 0) +
+        Time::Span.new(nanoseconds: 999_000_000)
+      )
+    end
+
+    it "parses a local datetime" do
+      v = doc("dt = 1979-05-27T07:32:00").nodes[0].as(TOML::KeyValueLine).value.as(TOML::LocalDateTimeValue)
+      v.time.year.should eq(1979)
+      v.time.hour.should eq(7)
+    end
+
+    it "accepts the lowercase 't' delimiter" do
+      v = doc("dt = 1979-05-27t07:32:00").nodes[0].as(TOML::KeyValueLine).value
+      v.should be_a(TOML::LocalDateTimeValue)
+    end
+
+    it "parses an offset datetime with Z" do
+      v = doc("dt = 1979-05-27T07:32:00Z").nodes[0].as(TOML::KeyValueLine).value.as(TOML::OffsetDateTimeValue)
+      v.time.offset.should eq(0)
+      v.time.year.should eq(1979)
+      v.time.hour.should eq(7)
+    end
+
+    it "parses an offset datetime with +hh:mm" do
+      v = doc("dt = 1979-05-27T00:32:00-07:00").nodes[0].as(TOML::KeyValueLine).value.as(TOML::OffsetDateTimeValue)
+      # 00:32 at -07:00 == 07:32 UTC
+      v.time.to_utc.hour.should eq(7)
+    end
+
+    it "parses an offset datetime with fractional seconds" do
+      v = doc("dt = 1979-05-27T07:32:00.999999-07:00").nodes[0].as(TOML::KeyValueLine).value.as(TOML::OffsetDateTimeValue)
+      v.time.nanosecond.should eq(999_999_000)
+    end
+
+    it "round-trips a datetime byte-identically" do
+      round_trip!("dt = 1979-05-27T07:32:00.999999-07:00\n")
+    end
+
+    it "rejects an invalid hour" do
+      expect_raises(TOML::ParseError, /invalid time component/) do
+        doc("t = 25:00:00\n")
+      end
+    end
+
+    it "rejects an invalid month" do
+      expect_raises(TOML::ParseError, /invalid datetime/) do
+        doc("d = 1979-13-01\n")
+      end
+    end
+  end
+
+  # ------------------------------------------------------------------
   # Keys
   # ------------------------------------------------------------------
 

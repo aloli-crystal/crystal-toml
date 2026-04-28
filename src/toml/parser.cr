@@ -213,26 +213,47 @@ module TOML
       end
     end
 
-    # The lexer emits a float `1.5` as `Atom("1") Dot Atom("5")`.
-    # Reassemble here when we see a Dot following the first atom.
+    # The lexer emits values that may span multiple tokens because
+    # the dot character is always returned as its own `Dot`. This
+    # method reassembles the value:
+    #
+    # * `1.5` arrives as `Atom("1") Dot Atom("5")` → float.
+    # * `1979-05-27T07:32:00.999-07:00` arrives as
+    #   `Atom("1979-05-27T07:32:00") Dot Atom("999-07:00")` →
+    #   fractional offset datetime.
+    # * `1979-05-27` and `07:32:00` arrive as a single atom →
+    #   local date or local time.
+    # * `42`, `0xDEAD`, `inf`, `true` arrive as a single atom →
+    #   integer / boolean / special float.
     private def parse_atom_or_float(first : Token) : Value
       if peek.kind.dot?
-        # Could be a float literal like `3.14` or `1e2.something`.
-        # Concatenate first.raw + "." + next atom into one string
-        # and try to parse as Float64.
+        # Atom-Dot-Atom form: could be a fractional datetime or a
+        # float. Try datetime first because a value like
+        # "1979-05-27T07:32:00" doesn't parse as a float.
         consume # the Dot
         next_tok = consume
         unless next_tok.kind.bare_key_or_atom?
-          error!(next_tok, "expected fractional part after '.'")
+          error!(next_tok, "expected value after '.'")
         end
-        raw = first.raw + "." + next_tok.raw
-        decoded = ValueDecoder.decode_float(raw)
-        return decoded if decoded
-        error!(first, "invalid float literal #{raw.inspect}")
+        combined = first.raw + "." + next_tok.raw
+        if dt = ValueDecoder.try_decode_datetime(combined)
+          return dt
+        end
+        if f = ValueDecoder.decode_float(combined)
+          return f
+        end
+        error!(first, "invalid value #{combined.inspect}")
       end
 
-      decoded = ValueDecoder.try_decode_atom(first.raw)
-      return decoded if decoded
+      # Single-atom form: try datetime (LocalDate / LocalTime /
+      # LocalDateTime / OffsetDateTime without fraction), then the
+      # plain atom decoders.
+      if dt = ValueDecoder.try_decode_datetime(first.raw)
+        return dt
+      end
+      if v = ValueDecoder.try_decode_atom(first.raw)
+        return v
+      end
       error!(first, "unrecognised value #{first.raw.inspect}")
     end
 

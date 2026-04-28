@@ -250,5 +250,194 @@ module TOML
       f = cleaned.to_f64?
       f ? FloatValue.new(raw, f) : nil
     end
+
+    # ------------------------------------------------------------------
+    # Date and time
+    # ------------------------------------------------------------------
+
+    # Try to decode `raw` as one of the four TOML date/time variants:
+    # OffsetDateTime, LocalDateTime, LocalDate, LocalTime. Returns
+    # `nil` if `raw` does not match any of these shapes so the
+    # caller can keep trying integer/float interpretations.
+    #
+    # Accepts both `T`/`t` and a literal space as the date/time
+    # delimiter (per TOML 1.0). The lexer emits a space-separated
+    # form as separate tokens, so this method only sees `T`/`t`
+    # forms and the space variant must be reassembled by the parser.
+    def try_decode_datetime(raw : String) : Value?
+      bytes = raw.to_slice
+      size = bytes.size
+
+      # Full date-time: at least "yyyy-mm-ddThh:mm:ss" (19 bytes).
+      if size >= 19 && date_part?(bytes, 0) && time_separator?(bytes[10]?) && time_part?(bytes, 11)
+        return decode_full_datetime(raw, bytes)
+      end
+
+      # LocalDate alone: exactly "yyyy-mm-dd".
+      if size == 10 && date_part?(bytes, 0)
+        return decode_local_date(raw, bytes)
+      end
+
+      # LocalTime alone: at least "hh:mm:ss".
+      if size >= 8 && time_part?(bytes, 0)
+        return decode_local_time(raw, bytes)
+      end
+
+      nil
+    end
+
+    private def date_part?(b : Bytes, off : Int32) : Bool
+      return false if off + 10 > b.size
+      digit?(b[off]) && digit?(b[off + 1]) && digit?(b[off + 2]) && digit?(b[off + 3]) &&
+        b[off + 4] == '-'.ord &&
+        digit?(b[off + 5]) && digit?(b[off + 6]) &&
+        b[off + 7] == '-'.ord &&
+        digit?(b[off + 8]) && digit?(b[off + 9])
+    end
+
+    private def time_part?(b : Bytes, off : Int32) : Bool
+      return false if off + 8 > b.size
+      digit?(b[off]) && digit?(b[off + 1]) &&
+        b[off + 2] == ':'.ord &&
+        digit?(b[off + 3]) && digit?(b[off + 4]) &&
+        b[off + 5] == ':'.ord &&
+        digit?(b[off + 6]) && digit?(b[off + 7])
+    end
+
+    private def time_separator?(b : UInt8?) : Bool
+      b == 'T'.ord || b == 't'.ord
+    end
+
+    private def digit?(b : UInt8) : Bool
+      b >= '0'.ord && b <= '9'.ord
+    end
+
+    private def decode_local_date(raw : String, b : Bytes) : LocalDateValue
+      year = parse_int(b, 0, 4)
+      month = parse_int(b, 5, 2)
+      day = parse_int(b, 8, 2)
+      time = build_time(year, month, day, 0, 0, 0, 0, "+00:00", raw, 0)
+      LocalDateValue.new(raw, time)
+    end
+
+    private def decode_local_time(raw : String, b : Bytes) : LocalTimeValue
+      hour = parse_int(b, 0, 2)
+      minute = parse_int(b, 3, 2)
+      second = parse_int(b, 6, 2)
+      validate_time_fields(hour, minute, second, raw)
+
+      ns = 0_i64
+      if b.size > 8
+        if b[8] != '.'.ord
+          raise ParseError.new("invalid local time #{raw.inspect}", 0, 0)
+        end
+        ns = parse_fractional(b, 9, b.size - 9, raw)
+      end
+
+      span = Time::Span.new(
+        hours: hour,
+        minutes: minute,
+        seconds: second,
+      ) + Time::Span.new(nanoseconds: ns)
+      LocalTimeValue.new(raw, span)
+    end
+
+    private def decode_full_datetime(raw : String, b : Bytes) : Value
+      year = parse_int(b, 0, 4)
+      month = parse_int(b, 5, 2)
+      day = parse_int(b, 8, 2)
+      hour = parse_int(b, 11, 2)
+      minute = parse_int(b, 14, 2)
+      second = parse_int(b, 17, 2)
+      validate_time_fields(hour, minute, second, raw)
+
+      offset_idx = 19
+      ns = 0_i64
+
+      # Optional fractional second.
+      if offset_idx < b.size && b[offset_idx] == '.'.ord
+        frac_start = offset_idx + 1
+        frac_end = frac_start
+        while frac_end < b.size && digit?(b[frac_end])
+          frac_end += 1
+        end
+        if frac_end == frac_start
+          raise ParseError.new("expected digits after '.' in datetime #{raw.inspect}", 0, 0)
+        end
+        ns = parse_fractional(b, frac_start, frac_end - frac_start, raw)
+        offset_idx = frac_end
+      end
+
+      offset_str : String? = nil
+      if offset_idx < b.size
+        offset_str = String.new(b[offset_idx, b.size - offset_idx])
+      end
+
+      if offset_str.nil?
+        time = build_time(year, month, day, hour, minute, second, ns, "+00:00", raw, 0)
+        LocalDateTimeValue.new(raw, time)
+      else
+        normalised = normalize_offset(offset_str, raw)
+        time = build_time(year, month, day, hour, minute, second, ns, normalised, raw, 0)
+        OffsetDateTimeValue.new(raw, time)
+      end
+    end
+
+    private def normalize_offset(s : String, raw : String) : String
+      if s == "Z" || s == "z"
+        "+00:00"
+      elsif s.size == 6 && (s[0] == '+' || s[0] == '-') && s[3] == ':'
+        s
+      else
+        raise ParseError.new("invalid timezone offset in datetime #{raw.inspect}", 0, 0)
+      end
+    end
+
+    private def parse_int(b : Bytes, off : Int32, len : Int32) : Int32
+      n = 0
+      len.times do |k|
+        n = n * 10 + (b[off + k] - '0'.ord).to_i
+      end
+      n
+    end
+
+    private def parse_fractional(b : Bytes, off : Int32, len : Int32, raw : String) : Int64
+      # Convert fractional second to nanoseconds; truncate beyond
+      # 9 digits per RFC 3339 / TOML guidance.
+      effective = Math.min(len, 9)
+      n = 0_i64
+      effective.times do |k|
+        unless digit?(b[off + k])
+          raise ParseError.new("invalid fractional second in #{raw.inspect}", 0, 0)
+        end
+        n = n * 10 + (b[off + k] - '0'.ord).to_i64
+      end
+      # Validate any remaining (truncated) digits.
+      (effective...len).each do |k|
+        unless digit?(b[off + k])
+          raise ParseError.new("invalid fractional second in #{raw.inspect}", 0, 0)
+        end
+      end
+      # Pad to 9 digits (nanosecond precision).
+      (9 - effective).times { n *= 10 }
+      n
+    end
+
+    private def validate_time_fields(hour : Int32, minute : Int32, second : Int32, raw : String) : Nil
+      if hour > 23 || minute > 59 || second > 60
+        raise ParseError.new("invalid time component in #{raw.inspect}", 0, 0)
+      end
+    end
+
+    private def build_time(year, month, day, hour, minute, second, nanoseconds, offset_str, raw, _line) : Time
+      sign = offset_str[0] == '-' ? -1 : 1
+      off_h = offset_str[1..2].to_i
+      off_m = offset_str[4..5].to_i
+      offset_seconds = sign * (off_h * 3600 + off_m * 60)
+      location = Time::Location.fixed(offset_seconds)
+      Time.local(year, month, day, hour, minute, second, nanosecond: nanoseconds.to_i32, location: location)
+    rescue ex : ArgumentError
+      raise ParseError.new("invalid datetime #{raw.inspect}: #{ex.message}", 0, 0)
+    end
   end
 end
