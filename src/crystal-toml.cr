@@ -8,6 +8,8 @@ require "./toml/node"
 require "./toml/value_decoder"
 require "./toml/parser"
 require "./toml/hash_builder"
+require "./toml/lookup"
+require "./toml/edit"
 
 # TOML v1.0 parser and serializer for Crystal, with comment-and-format
 # preservation across parse → modify → write round-trips.
