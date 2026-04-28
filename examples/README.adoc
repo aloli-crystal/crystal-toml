@@ -1,0 +1,52 @@
+= crystal-toml — Examples
+:toc: macro
+
+Self-contained example programs you can run with `crystal run`.
+
+== `01_simple_read.cr`
+
+Drop-in `TOML.parse_to_hash` API : reads a TOML config into a flat
+`Hash(String, TOML::Type)`, casts the nested values explicitly,
+walks an array of tables. The exact equivalent of what
+`crystal-community/TOML.cr` users do today.
+
+[source,shell]
+----
+crystal run examples/01_simple_read.cr
+----
+
+== `02_secret_vault.cr`
+
+The flagship use case : a TOML secret vault annotated with
+rotation comments. Loads the vault via `TOML.parse`, rotates two
+Stripe credentials with a fresh trailing comment, removes a
+no-longer-used secret and adds a new one — and serialises back.
+Every comment, blank line and `[section]` is preserved
+byte-for-byte except for the four touched lines.
+
+[source,shell]
+----
+crystal run examples/02_secret_vault.cr
+----
+
+== `03_typed_lookup.cr`
+
+Walks the typed-lookup API. Required values are read with the
+raising accessors (`#string`, `#int`, …) ; optional values use
+the `?`-form (`#string?`, `#bool?` …). Demonstrates path queries,
+membership tests, datetime parsing and `Time::Span` for local
+times.
+
+[source,shell]
+----
+crystal run examples/03_typed_lookup.cr
+----
+
+== Running them all
+
+[source,shell]
+----
+for f in examples/0*_*.cr ; do
+  echo "=== $f ===" ; crystal run "$f"
+done
+----

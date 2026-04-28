@@ -3,6 +3,22 @@
 :toc-title: Versions
 :toclevels: 2
 
+== Non publié
+
+Documentation :
+
+* README bilingue détaillé (EN + FR) couvrant installation, les
+  deux surfaces d'API, lecture typée, édition, préservation au
+  round-trip, table des types TOML → Crystal, migration depuis
+  `crystal-community/TOML.cr`, limitations et vue d'ensemble de
+  l'architecture.
+* Trois exemples exécutables dans `examples/` illustrant le
+  drop-in `parse_to_hash`, une édition de coffre de secrets
+  annoté, et la lecture typée par path pointé.
+* Documentation API générée par `crystal docs` et déployée sur
+  https://aloli-crystal.github.io/crystal-toml/ à chaque push
+  sur `production` (workflow GitHub Pages).
+
 == v0.1.0 — 2026-04-28
 
 Première version publique de `crystal-toml`. Parser et sérialiseur

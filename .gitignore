@@ -3,4 +3,5 @@
 /.shards/
 *.dwarf
 /shard.lock
+/docs/
 .DS_Store

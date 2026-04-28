@@ -1,12 +1,14 @@
 = crystal-toml
-:source-language: crystal
-:toc: left
-:toc-title: Table of contents
+:toc: macro
 :toclevels: 2
+:source-language: crystal
 
 image:https://github.com/aloli-crystal/crystal-toml/actions/workflows/ci.yml/badge.svg[CI,link=https://github.com/aloli-crystal/crystal-toml/actions/workflows/ci.yml]
+image:https://img.shields.io/badge/TOML-v1.0.0-blue[TOML v1.0,link=https://toml.io/en/v1.0.0]
+image:https://img.shields.io/badge/toml--test-100%25-brightgreen[toml-test 100%,link=https://github.com/toml-lang/toml-test]
+image:https://img.shields.io/badge/license-MIT-blue[License MIT,link=LICENSE]
 
-French version: link:README.fr.adoc[README.fr.adoc]
+🇫🇷 Lisez ce document en français : link:README.fr.adoc[README.fr.adoc]
 
 TOML v1.0 parser and serializer for Crystal, with **comment and
 formatting preservation** across `parse → modify → write`
@@ -14,28 +16,63 @@ round-trips. Pure Crystal, zero runtime dependencies.
 
 **100% conformance** with the official
 https://github.com/toml-lang/toml-test[`toml-lang/toml-test`] v2.1.0
-interop suite (205/205 valid, 473/473 invalid).
+interop suite (205/205 valid tests, 473/473 invalid tests).
 
-== Why
+API documentation : https://aloli-crystal.github.io/crystal-toml/
 
-The Crystal ecosystem has one TOML shard today,
-https://github.com/crystal-community/TOML.cr[crystal-community/TOML.cr].
-It parses only (no writer), targets the obsolete TOML v0.5 spec, and
-collapses the document into a flat `Hash` that drops every comment,
-blank line, and the declarative ordering.
+toc::[]
 
-For configuration files and secret vaults that humans read and edit,
-that is unworkable. `crystal-toml` is built around three goals:
+== Why crystal-toml
+
+The Crystal ecosystem already has one TOML library,
+https://github.com/crystal-community/TOML.cr[`crystal-community/TOML.cr`].
+It works, but has three limitations that are blockers for the use
+cases this shard targets:
+
+. **Parsing only.** No way to write TOML programmatically.
+. **TOML v0.5.0** — the spec stabilized as v1.0.0 in 2021. The
+  deltas (multi-line inline tables, dotted keys, `inf`/`nan`,
+  modern datetime forms) are not handled.
+. **Flat `Hash` output.** Comments, blank lines and the order of
+  declaration are lost. You can't read a config, modify one value,
+  and write it back without diffing the entire file.
+
+`crystal-toml` is built around three goals:
 
 . **TOML v1.0 conformance**, validated against the official
-  https://github.com/toml-lang/toml-test[toml-test] interop suite.
-. **Byte-identical round-trip**: `TOML.parse(s).to_toml == s` for
-  every valid `s`. The AST keeps trivia (comments, whitespace, blank
-  lines, original number/string representation) attached to their
-  nodes.
+  `toml-lang/toml-test` interop suite (the only authoritative
+  cross-implementation harness). 100% on every release.
+. **Byte-identical round-trip** : `TOML.parse(s).to_toml == s`
+  for every valid `s`. The AST keeps trivia (comments,
+  whitespace, blank lines, original number/string formatting)
+  attached to its nodes.
 . **Targeted edits** that only touch what you change. Modify one
   value in a 200-line config and the diff is one line, not the
   whole file reformatted.
+
+The shard powers `crystal-secrets` for Aloli, where TOML vaults
+are versioned in git, annotated with comments (`# rotated
+2026-04-15`), and edited programmatically without losing those
+annotations.
+
+== Conformance
+
+`crystal-toml` is validated on every CI run against the official
+https://github.com/toml-lang/toml-test[`toml-lang/toml-test`] suite
+v2.1.0:
+
+[cols="2,1,1,1",options="header"]
+|===
+| Category | Tests | Passed | Result
+
+| `valid/`   | 205 | 205 | 100%
+| `invalid/` | 473 | 473 | 100%
+| **Total**  | **678** | **678** | **100%**
+|===
+
+The decoder binary `bin/crystal-toml-decoder` is built and run as
+part of CI on every push to the `production` branch. A regression
+fails the build.
 
 == Installation
 
@@ -51,19 +88,44 @@ dependencies:
 
 Then `shards install`.
 
-== Usage
+Crystal ≥ 1.19.0. No runtime dependencies.
 
-=== Simple read (drop-in for crystal-community/TOML.cr)
+== Quickstart
+
+There are two API surfaces depending on what you want to do.
+
+=== Drop-in mode — `TOML.parse_to_hash`
+
+For read-only consumers — fast, plain `Hash`, loses every comment
+and the original formatting. Drop-in compatible with
+`crystal-community/TOML.cr`.
 
 [source,crystal]
 ----
 require "crystal-toml"
 
-hash = TOML.parse_to_hash(File.read("config.toml"))
-puts hash["database"]["host"]
+source = File.read("config.toml")
+config = TOML.parse_to_hash(source)
+
+puts config["title"]
+puts config["server"].as(Hash(String, TOML::Type))["host"]
 ----
 
-=== Edit while preserving comments
+`TOML.parse_to_hash` returns `Hash(String, TOML::Type)` where
+`TOML::Type` is the recursive union :
+
+[source,crystal]
+----
+alias TOML::Type = Nil | String | Int64 | Float64 | Bool |
+                   Time | Time::Span |
+                   Array(TOML::Type) | Hash(String, TOML::Type)
+----
+
+=== Preservation mode — `TOML.parse`
+
+For writers and round-trippers — returns a `TOML::Document` AST
+that keeps comments, blank lines, key order and the original
+byte-level formatting :
 
 [source,crystal]
 ----
@@ -71,21 +133,319 @@ require "crystal-toml"
 
 doc = TOML.parse(File.read("vault.toml"))
 
+# Read with typed accessors
+db_url = doc.string("DATABASE_URL")
+port   = doc.int?("server.port") || 8080
+
+# Modify
 doc.set("DATABASE_URL", "postgres://new...")
-doc.set_with_comment("API_KEY", "ak_...", " rotated 2026-04-28")
+doc.set_with_comment("API_KEY", "ak_...", "rotated 2026-04-28")
 doc.delete("OLD_TOKEN")
 
-# Comments, blank lines, and key order are all preserved.
+# Write back — comments, blanks and the formatting of every
+# untouched line are preserved byte-for-byte.
 File.write("vault.toml", doc.to_toml)
 ----
 
-== Status
+== Reading values
 
-**v0.1.0** — first public release. Fully conformant with TOML v1.0
-per the official `toml-lang/toml-test` interop suite. See
-`CRYSTAL-TOML-SPECS.adoc` in the sibling `prod-crystal/` repository
-for the full functional and technical specification.
+`Document` exposes typed accessors for every TOML scalar type. Each
+comes in two forms:
+
+* **`#TYPE?(path)`** — returns the value if it exists *and*
+  matches the requested type, `nil` otherwise.
+* **`#TYPE(path)`**  — same, but raises `KeyError` if missing or
+  `TypeCastError` on a wrong type.
+
+[source,crystal]
+----
+doc = TOML.parse(<<-TOML)
+  title = "Example"
+  port  = 8080
+  pi    = 3.14
+  on    = true
+  when  = 1979-05-27T07:32:00Z
+  dur   = 07:32:00
+
+  [server]
+  host = "0.0.0.0"
+  TOML
+
+doc.string("title")           # => "Example"
+doc.int("port")               # => 8080_i64
+doc.float("pi")               # => 3.14
+doc.bool("on")                # => true
+doc.datetime("when").year     # => 1979
+doc.time_of_day("dur")        # => 07:32:00.0 (Time::Span)
+doc.string("server.host")     # => "0.0.0.0"
+
+doc.has_key?("server.host")   # => true
+doc.has_key?("server.tls")    # => false
+doc.string?("missing")        # => nil
+doc.int?("title")             # => nil  (wrong type, no raise)
+
+doc.string("title.x")         # raises KeyError
+doc.string("port")            # raises TypeCastError
+----
+
+The path is a dotted string. For keys that themselves contain a
+dot, use the `Array(String)` form :
+
+[source,crystal]
+----
+doc = TOML.parse(%("a.b" = 1))
+doc.get?(["a.b"])             # => 1_i64
+----
+
+`#get?(path)` and `#get(path)` return the raw `TOML::Type` value
+without a type filter when you want to handle the type yourself.
+
+== Editing values
+
+Top-level keys can be replaced, inserted, or deleted while
+preserving the formatting of every other line :
+
+[source,crystal]
+----
+doc = TOML.parse(<<-TOML)
+    name   = "old"   # original
+    port   = 8080
+
+    [server]
+    host = "0.0.0.0"
+    TOML
+
+# Replace : the surrounding whitespace and the trailing comment
+# are kept.
+doc.set("name", "new")
+# →   name   = 'new'   # original
+
+# Insert : a new line is added just after the last top-level KV,
+# i.e. before any [section]. The new line uses literal-string
+# quotes if possible (`'...'`), otherwise basic strings (`"..."`)
+# with proper escaping.
+doc.set("region", "eu-west")
+# →   region = 'eu-west'
+
+# Insert with a comment :
+doc.set_with_comment("API_KEY", "ak_xxx", "rotated 2026-04-28")
+# →   API_KEY = 'ak_xxx' # rotated 2026-04-28
+
+# Delete : returns true if a line was removed, false otherwise.
+doc.delete("port")            # => true
+doc.delete("nope")            # => false
+----
+
+`#set` is overloaded for `String`, `Int`, `Float`, `Bool`. Float
+literals automatically emit `inf` / `-inf` / `nan` for the
+corresponding non-finite values.
+
+[NOTE]
+====
+**v0.1 limitation**: editing operates on **top-level keys only**.
+Modifying a value inside a `[section]` block, or inside a dotted
+path, is not yet supported. For those cases, manually rebuild the
+document or wait for v0.2.
+====
+
+== Round-trip preservation
+
+The headline feature: a parsed document can be re-serialised
+byte-for-byte identically, even if the input is full of comments,
+blank lines, and unusual formatting :
+
+[source,crystal]
+----
+src = <<-TOML
+  # Production secrets vault
+  # Rotated quarterly — last update 2026-04-15
+
+  DATABASE_URL = "postgres://prod/db"
+  API_KEY      = "ak_xxx"        # never log this!
+
+  [stripe]
+  # Live keys — handle with care
+  secret_key      = "sk_live_..."
+  webhook_secret  = "whsec_..."
+  TOML
+
+doc = TOML.parse(src)
+doc.to_toml == src   # => true (byte-identical)
+----
+
+After modification, only the touched lines change. Every other
+byte of the original is preserved :
+
+[source,crystal]
+----
+doc.set("DATABASE_URL", "postgres://prod/new")
+new_src = doc.to_toml
+# Diff against src : exactly one line changed (DATABASE_URL),
+# every comment, blank line, and adjacent KV is byte-identical.
+----
+
+This makes `crystal-toml` suitable for tooling that edits
+human-authored TOML files (CI configs, secret vaults, project
+manifests) without introducing churn in version control diffs.
+
+== TOML types → Crystal types
+
+[cols="3,3",options="header"]
+|===
+| TOML 1.0 type | Crystal type returned
+
+| Basic / multi-line basic / literal / multi-line literal string
+| `String` (with escapes decoded)
+
+| Decimal / hex / octal / binary integer
+| `Int64`
+
+| Float (with exponent / `inf` / `nan`)
+| `Float64`
+
+| Boolean
+| `Bool`
+
+| Offset datetime (RFC 3339 with timezone)
+| `Time` (with the appropriate `Time::Location`)
+
+| Local datetime (no timezone)
+| `Time` in UTC location
+
+| Local date
+| `Time` at midnight UTC
+
+| Local time
+| `Time::Span` from midnight
+
+| Array
+| `Array(TOML::Type)` (recursive)
+
+| Inline table or `[section]`
+| `Hash(String, TOML::Type)` (recursive)
+
+| Array of tables `[[…]]`
+| `Array(Hash(String, TOML::Type))`
+|===
+
+In **preservation mode** (`TOML.parse`), each value is wrapped in
+a typed `TOML::Value` subclass that also carries the original
+`raw` source text. The four datetime variants are kept distinct
+(`OffsetDateTimeValue`, `LocalDateTimeValue`, `LocalDateValue`,
+`LocalTimeValue`) so a round-trip preserves the exact form the
+author wrote.
+
+== Migration from crystal-community/TOML.cr
+
+If your code uses `crystal-community/TOML.cr` :
+
+[source,crystal]
+----
+# Before
+require "toml"
+
+hash = TOML.parse(File.read("config.toml"))
+----
+
+The migration is a one-line dependency change in `shard.yml`:
+
+[source,yaml]
+----
+dependencies:
+  crystal-toml:                  # was: toml
+    github: aloli-crystal/crystal-toml
+    version: "~> 0.1"
+----
+
+And one method-name change in your code:
+
+[source,crystal]
+----
+require "crystal-toml"
+
+hash = TOML.parse_to_hash(File.read("config.toml"))
+----
+
+The returned `Hash(String, TOML::Type)` is shape-equivalent. The
+type alias `TOML::Type` is broader (it adds `Time::Span` for
+local times) but otherwise behaves the same way.
+
+If you need to read your config back into Crystal but *also*
+edit it later, switch to `TOML.parse` and use the AST API
+described above.
+
+== Limitations (v0.1)
+
+* **Editing is top-level only.** `Document#set` / `#delete` /
+  `#set_with_comment` operate on top-level bare keys. Modifying
+  a value inside a `[section]` or via a dotted path is not yet
+  supported in this release.
+* **No schema validation.** The shard validates TOML *syntax*,
+  not your business semantics.
+* **No streaming.** The full document is read into memory and
+  decoded to an AST. Files in the megabyte range are fine; files
+  in the gigabyte range are not the target use case.
+* **No encoder for toml-test.** The shard ships
+  `bin/crystal-toml-decoder` (TOML → JSON) but not the
+  corresponding TOML encoder side. Round-trip parsing is fully
+  validated, but the JSON-driven encoder side of the toml-test
+  harness is left to a future release.
+
+These items are tracked for v0.2+.
+
+== Architecture
+
+The pipeline is a classic three-phase one :
+
+----
+                Lexer            Parser              Document
+String  ──────► tokens  ───────► AST nodes  ───────► Hash<String, Type>
+              + trivia          + raw text          (parse_to_hash)
+                                  on every node
+                                       │
+                                       └──► to_toml ──► byte-identical String
+----
+
+* **Lexer** (`src/toml/lexer.cr`) : streaming, emits trivia tokens
+  rather than skipping them. UTF-8 validated up-front.
+* **Parser** (`src/toml/parser.cr`) : recursive-descent over the
+  token stream. Folds trivia into surrounding nodes' raw fields
+  so the serializer can re-emit byte-for-byte.
+* **AST** (`src/toml/node.cr`, `src/toml/value.cr`) : flat list of
+  top-level lines (`KeyValueLine`, `TableHeaderLine`,
+  `ArrayOfTablesLine`, `CommentLine`, `BlankLine`). Each node
+  stores enough verbatim source text to be re-emitted unchanged.
+* **HashBuilder** (`src/toml/hash_builder.cr`) : walks the AST and
+  produces the flat `Hash(String, Type)` output. Also enforces all
+  the spec's semantic rules (duplicate keys, table redefinitions,
+  inline-table closure, dotted-key conflicts, etc.).
+
+A separate `TestFormat` module (`src/toml/test_format.cr`) walks
+the AST and emits the JSON form expected by `toml-test`, used
+only by the decoder binary.
+
+== Development
+
+[source,shell]
+----
+# Run the Crystal test suite
+crystal spec
+
+# Lint
+shards build
+bin/ameba
+
+# Build the toml-test decoder binary
+shards build crystal-toml-decoder
+
+# Run the full toml-test interop suite (after downloading toml-test)
+toml-test test -decoder ./bin/crystal-toml-decoder
+----
+
+Code style: `crystal tool format src/ spec/` is enforced in CI.
 
 == License
 
 MIT — see link:LICENSE[LICENSE].
+
+Copyright © 2026 ALOLI sas — Philippe Nénert
