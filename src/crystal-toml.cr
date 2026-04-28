@@ -7,6 +7,7 @@ require "./toml/value"
 require "./toml/node"
 require "./toml/value_decoder"
 require "./toml/parser"
+require "./toml/hash_builder"
 
 # TOML v1.0 parser and serializer for Crystal, with comment-and-format
 # preservation across parse → modify → write round-trips.
@@ -34,5 +35,23 @@ module TOML
   # Raises `TOML::ParseError` on invalid input.
   def self.parse(source : String) : Document
     Parser.new(source).parse
+  end
+
+  # Parses a TOML v1.0 document and returns a plain
+  # `Hash(String, TOML::Type)`, dropping comments and the original
+  # formatting. Drop-in replacement for the
+  # `crystal-community/TOML.cr` API.
+  #
+  # Raises `TOML::ParseError` on invalid input or duplicate keys.
+  def self.parse_to_hash(source : String) : Hash(String, Type)
+    HashBuilder.build(parse(source))
+  end
+end
+
+# Convenience method on `Document` itself.
+class TOML::Document
+  # See `TOML.parse_to_hash`.
+  def to_h : Hash(String, TOML::Type)
+    HashBuilder.build(self)
   end
 end
