@@ -28,3 +28,17 @@ jobs:
 
       - name: Run linter
         run: bin/ameba
+
+      - name: Build toml-test decoder binary
+        run: shards build crystal-toml-decoder
+
+      - name: Download toml-test
+        run: |
+          curl -L -o /tmp/toml-test.gz \
+            https://github.com/toml-lang/toml-test/releases/download/v2.1.0/toml-test-v2.1.0-linux-amd64.gz
+          gunzip /tmp/toml-test.gz
+          chmod +x /tmp/toml-test
+          /tmp/toml-test version
+
+      - name: Run toml-test interop suite (informational)
+        run: /tmp/toml-test test -decoder ./bin/crystal-toml-decoder || true
