@@ -23,11 +23,11 @@ module TOML
     end
 
     def decode_multiline_basic_string(raw : String, line : Int32, column : Int32) : StringValue
-      # Strip the """...""" delimiters. The closing run may be 3, 4
-      # or 5 quotes; the opening is always 3.
-      inner = raw[3...(raw.size - closing_quote_run(raw, '"'))]
-      # Per spec, a single immediate newline after the opener is
-      # trimmed.
+      # Both opening and closing delimiters are exactly 3 quotes.
+      # Any extra quote that appears in a `""""` run before the
+      # actual end is *content* (the lexer has already absorbed up
+      # to 2 such extras into `raw`).
+      inner = raw[3...(raw.size - 3)]
       inner = strip_first_newline(inner)
       decoded = decode_basic_escapes(inner, line, column, multiline: true)
       StringValue.new(raw, StringValue::Kind::MultilineBasic, decoded)
@@ -38,19 +38,9 @@ module TOML
     end
 
     def decode_multiline_literal_string(raw : String, _line : Int32, _column : Int32) : StringValue
-      inner = raw[3...(raw.size - closing_quote_run(raw, '\''))]
+      inner = raw[3...(raw.size - 3)]
       inner = strip_first_newline(inner)
       StringValue.new(raw, StringValue::Kind::MultilineLiteral, inner)
-    end
-
-    private def closing_quote_run(raw : String, quote : Char) : Int32
-      count = 0
-      i = raw.size - 1
-      while i >= 3 && raw[i] == quote && count < 5
-        count += 1
-        i -= 1
-      end
-      count
     end
 
     private def strip_first_newline(s : String) : String
@@ -197,19 +187,20 @@ module TOML
       body = raw[body_start..]
       return nil if body.empty?
 
-      # Reject leading zeros on a multi-digit decimal literal: `07`,
-      # `+007`, `-01` are all invalid TOML integers.
-      if body.size > 1 && body[0] == '0' && body[1].ascii_number?
+      # Reject leading zeros on integer-shape literals: `07`, `0_0`,
+      # `+007`, `-01`. A leading `0` followed by `.`, `e` or `E` is
+      # not an integer here — `decode_float` handles it below.
+      if body.size > 1 && body[0] == '0' && body[1] != '.' && body[1] != 'e' && body[1] != 'E'
         return nil
       end
 
-      # Exponential form: must be a float, with strict `_` rules.
+      # Exponential form (or float-shape): delegate to decode_float.
       if body.includes?('e') || body.includes?('E')
         return decode_float(raw)
       end
 
-      # Underscore must not be the first character of the body.
-      return nil if body[0] == '_'
+      # Underscore must not bound the body.
+      return nil if body[0] == '_' || body[-1] == '_'
       cleaned = strip_underscores_decimal(body, body_start > 0 ? raw[0..0] : "")
       return nil unless cleaned
       i = cleaned.to_i64?
@@ -217,17 +208,20 @@ module TOML
     end
 
     private def strip_underscores_decimal(body : String, sign : String) : String?
-      # Each `_` must lie between two ASCII digits.
+      # Each `_` must lie between two ASCII digits, and only digits
+      # (besides `_`) are allowed in a decimal integer body.
       result = String::Builder.new
       result << sign
       chars = body.chars
       chars.each_with_index do |c, i|
         if c == '_'
-          prev = chars[i - 1]?
-          nxt = chars[i + 1]?
+          prev = i > 0 ? chars[i - 1] : nil
+          nxt = i + 1 < chars.size ? chars[i + 1] : nil
           return nil unless prev && nxt && prev.ascii_number? && nxt.ascii_number?
-        else
+        elsif c.ascii_number?
           result << c
+        else
+          return nil
         end
       end
       result.to_s
@@ -236,9 +230,8 @@ module TOML
     private def decode_int_radix(raw : String, body_start : Int32, radix : Int32) : IntegerValue?
       body = raw[body_start..]
       return nil if body.empty?
-      # Underscore must not be the first character of the body
-      # (would be `0x_DEAD`, etc.).
-      return nil if body[0] == '_'
+      # Underscore must not bound the body (`0x_DEAD`, `0xDEAD_`).
+      return nil if body[0] == '_' || body[-1] == '_'
       cleaned = strip_underscores_radix(body, radix)
       return nil unless cleaned
       return nil if cleaned.empty?
@@ -246,16 +239,22 @@ module TOML
       i ? IntegerValue.new(raw, i) : nil
     end
 
+    # Underscores may only sit between two valid digits of the
+    # given radix; any other character (including signs `-`/`+`
+    # which TOML disallows after a `0x`/`0o`/`0b` prefix) makes
+    # the literal invalid.
     private def strip_underscores_radix(body : String, radix : Int32) : String?
       result = String::Builder.new
       chars = body.chars
       chars.each_with_index do |c, i|
         if c == '_'
-          prev = chars[i - 1]?
-          nxt = chars[i + 1]?
+          prev = i > 0 ? chars[i - 1] : nil
+          nxt = i + 1 < chars.size ? chars[i + 1] : nil
           return nil unless prev && nxt && radix_digit?(prev, radix) && radix_digit?(nxt, radix)
-        else
+        elsif radix_digit?(c, radix)
           result << c
+        else
+          return nil
         end
       end
       result.to_s
@@ -280,34 +279,39 @@ module TOML
       body = raw[sign_offset..]
       return nil if body.empty?
 
-      # Reject leading-zero integer parts: `07.5`, `+02.0`.
-      if body.size > 1 && body[0] == '0' && body[1].ascii_number?
-        return nil
+      # Body must not start or end with a structural character.
+      first = body[0]
+      last = body[-1]
+      return nil if first == '.' || first == '_' || first == 'e' || first == 'E'
+      return nil if last == '.' || last == '_' || last == 'e' || last == 'E' || last == '+' || last == '-'
+
+      # Reject leading zero on an integer part with more than one
+      # character before the `.` or `e` (rules out `07.5`, `+02.0`).
+      if first == '0' && body.size > 1
+        second = body[1]
+        return nil if second != '.' && second != 'e' && second != 'E'
       end
 
-      # Each `_` must lie between two ASCII digits — anywhere in the
-      # mantissa or the exponent. Reject `_e10`, `1_e10`, `1e_10`,
-      # `1e10_`, `1__0`, `_1.0`, `1.0_`.
-      validated = validate_float_underscores(raw)
-      return nil unless validated
+      # `.` must be present at most once and bordered by digits.
+      if dot_idx = body.index('.')
+        return nil unless body[dot_idx - 1].ascii_number?
+        return nil unless body[dot_idx + 1].ascii_number?
+        return nil if body.index('.', dot_idx + 1) # two dots
+      end
 
-      f = validated.to_f64?
+      # Each `_` must lie between two ASCII digits, anywhere in the
+      # body. The exponent's optional sign is allowed but not
+      # adjacent to an underscore.
+      body.each_char_with_index do |c, i|
+        next unless c == '_'
+        prev = i > 0 ? body[i - 1] : nil
+        nxt = i + 1 < body.size ? body[i + 1] : nil
+        return nil unless prev && nxt && prev.ascii_number? && nxt.ascii_number?
+      end
+
+      cleaned = (sign_offset == 1 ? raw[0..0] + body : body).delete('_')
+      f = cleaned.to_f64?
       f ? FloatValue.new(raw, f) : nil
-    end
-
-    private def validate_float_underscores(raw : String) : String?
-      chars = raw.chars
-      result = String::Builder.new
-      chars.each_with_index do |c, i|
-        if c == '_'
-          prev = chars[i - 1]?
-          nxt = chars[i + 1]?
-          return nil unless prev && nxt && prev.ascii_number? && nxt.ascii_number?
-        else
-          result << c
-        end
-      end
-      result.to_s
     end
 
     # ------------------------------------------------------------------
@@ -364,7 +368,7 @@ module TOML
     end
 
     private def time_separator?(b : UInt8?) : Bool
-      b == 'T'.ord || b == 't'.ord
+      b == 'T'.ord || b == 't'.ord || b == ' '.ord
     end
 
     private def digit?(b : UInt8) : Bool
@@ -443,13 +447,18 @@ module TOML
     end
 
     private def normalize_offset(s : String, raw : String) : String
-      if s == "Z" || s == "z"
-        "+00:00"
-      elsif s.size == 6 && (s[0] == '+' || s[0] == '-') && s[3] == ':'
-        s
-      else
+      return "+00:00" if s == "Z" || s == "z"
+      unless s.size == 6 && (s[0] == '+' || s[0] == '-') && s[3] == ':' &&
+             s[1].ascii_number? && s[2].ascii_number? &&
+             s[4].ascii_number? && s[5].ascii_number?
         raise ParseError.new("invalid timezone offset in datetime #{raw.inspect}", 0, 0)
       end
+      hours = s[1..2].to_i
+      minutes = s[4..5].to_i
+      if hours > 23 || minutes > 59
+        raise ParseError.new("timezone offset out of range in datetime #{raw.inspect}", 0, 0)
+      end
+      s
     end
 
     private def parse_int(b : Bytes, off : Int32, len : Int32) : Int32

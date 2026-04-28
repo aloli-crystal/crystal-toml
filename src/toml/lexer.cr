@@ -56,6 +56,68 @@ module TOML
       @pos = 0
       @line = 1
       @column = 1
+      validate_utf8!
+    end
+
+    # Walks the input once and rejects any byte sequence that is
+    # not valid UTF-8 (per TOML 1.0, the document MUST be UTF-8).
+    # Catches over-longs, surrogates, and incomplete sequences.
+    private def validate_utf8! : Nil
+      i = 0
+      line = 1
+      column = 1
+      bytes = @bytes
+      while i < bytes.size
+        b = bytes[i]
+        if b < 0x80
+          if b == '\n'.ord
+            line += 1
+            column = 1
+          else
+            column += 1
+          end
+          i += 1
+        elsif b < 0xC2
+          raise ParseError.new("invalid UTF-8 leading byte 0x#{b.to_s(16)}", line, column)
+        elsif b < 0xE0
+          raise ParseError.new("truncated UTF-8 sequence", line, column) if i + 1 >= bytes.size
+          raise ParseError.new("invalid UTF-8 continuation byte", line, column) unless utf8_continuation?(bytes[i + 1])
+          i += 2
+          column += 1
+        elsif b < 0xF0
+          raise ParseError.new("truncated UTF-8 sequence", line, column) if i + 2 >= bytes.size
+          c1 = bytes[i + 1]
+          c2 = bytes[i + 2]
+          unless utf8_continuation?(c1) && utf8_continuation?(c2)
+            raise ParseError.new("invalid UTF-8 continuation byte", line, column)
+          end
+          # Reject over-longs (codepoints below 0x800 must use 2-byte form).
+          raise ParseError.new("over-long UTF-8 encoding", line, column) if b == 0xE0 && c1 < 0xA0
+          # Reject surrogates U+D800..U+DFFF (encoded as ED A0..BF ...).
+          raise ParseError.new("surrogate codepoint not allowed in UTF-8", line, column) if b == 0xED && c1 >= 0xA0
+          i += 3
+          column += 1
+        elsif b <= 0xF4
+          raise ParseError.new("truncated UTF-8 sequence", line, column) if i + 3 >= bytes.size
+          c1 = bytes[i + 1]
+          c2 = bytes[i + 2]
+          c3 = bytes[i + 3]
+          unless utf8_continuation?(c1) && utf8_continuation?(c2) && utf8_continuation?(c3)
+            raise ParseError.new("invalid UTF-8 continuation byte", line, column)
+          end
+          # Over-long detection and codepoint > 0x10FFFF detection.
+          raise ParseError.new("over-long UTF-8 encoding", line, column) if b == 0xF0 && c1 < 0x90
+          raise ParseError.new("UTF-8 codepoint above U+10FFFF", line, column) if b == 0xF4 && c1 >= 0x90
+          i += 4
+          column += 1
+        else
+          raise ParseError.new("invalid UTF-8 leading byte 0x#{b.to_s(16)}", line, column)
+        end
+      end
+    end
+
+    private def utf8_continuation?(b : UInt8) : Bool
+      b >= 0x80 && b <= 0xBF
     end
 
     # Returns the next token. Once the end of input is reached,
@@ -211,7 +273,7 @@ module TOML
         when '\\'.ord
           consume_basic_escape(start_line, start_column)
         else
-          if b < 0x20 && b != '\t'.ord
+          if (b < 0x20 && b != '\t'.ord) || b == 0x7F
             error!("invalid control character in basic string")
           end
           advance
@@ -308,7 +370,7 @@ module TOML
             error!("bare carriage return inside multi-line basic string")
           end
         else
-          if b < 0x20 && b != '\t'.ord
+          if (b < 0x20 && b != '\t'.ord) || b == 0x7F
             error!("invalid control character in multi-line basic string")
           end
           advance
@@ -388,7 +450,7 @@ module TOML
         when '\n'.ord, '\r'.ord
           error!("unterminated literal string (newline before closing quote)", start_line, start_column)
         else
-          if b < 0x20 && b != '\t'.ord
+          if (b < 0x20 && b != '\t'.ord) || b == 0x7F
             error!("invalid control character in literal string")
           end
           advance
@@ -430,7 +492,7 @@ module TOML
             error!("bare carriage return inside multi-line literal string")
           end
         else
-          if b < 0x20 && b != '\t'.ord
+          if (b < 0x20 && b != '\t'.ord) || b == 0x7F
             error!("invalid control character in multi-line literal string")
           end
           advance

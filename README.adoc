@@ -12,6 +12,10 @@ TOML v1.0 parser and serializer for Crystal, with **comment and
 formatting preservation** across `parse → modify → write`
 round-trips. Pure Crystal, zero runtime dependencies.
 
+**100% conformance** with the official
+https://github.com/toml-lang/toml-test[`toml-lang/toml-test`] v2.1.0
+interop suite (205/205 valid, 473/473 invalid).
+
 == Why
 
 The Crystal ecosystem has one TOML shard today,
@@ -77,10 +81,10 @@ File.write("vault.toml", doc.to_toml)
 
 == Status
 
-This shard is **under active development**. The v0.1.0 release is
-not yet tagged. See `CRYSTAL-TOML-SPECS.adoc` in the sibling
-`prod-crystal/` repository for the full functional and technical
-specification.
+**v0.1.0** — first public release. Fully conformant with TOML v1.0
+per the official `toml-lang/toml-test` interop suite. See
+`CRYSTAL-TOML-SPECS.adoc` in the sibling `prod-crystal/` repository
+for the full functional and technical specification.
 
 == License
 

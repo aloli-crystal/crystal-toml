@@ -326,18 +326,45 @@ module TOML
     end
 
     # The lexer emits values that may span multiple tokens because
-    # the dot character is always returned as its own `Dot`. This
-    # method reassembles the value:
+    # the dot character is always returned as its own `Dot`, and
+    # because TOML allows a *space* as the date/time delimiter
+    # (which the lexer treats as `Whitespace`). This method
+    # reassembles every multi-token value form:
     #
     # * `1.5` arrives as `Atom("1") Dot Atom("5")` → float.
     # * `1979-05-27T07:32:00.999-07:00` arrives as
     #   `Atom("1979-05-27T07:32:00") Dot Atom("999-07:00")` →
     #   fractional offset datetime.
+    # * `1979-05-27 07:32:00` arrives as
+    #   `Atom("1979-05-27") Whitespace(" ") Atom("07:32:00")` →
+    #   local datetime with space delimiter.
     # * `1979-05-27` and `07:32:00` arrive as a single atom →
     #   local date or local time.
     # * `42`, `0xDEAD`, `inf`, `true` arrive as a single atom →
     #   integer / boolean / special float.
     private def parse_atom_or_float(first : Token) : Value
+      # Date + space + time form (TOML allows space as the date/time
+      # delimiter on top of `T`/`t`).
+      if first.raw.size == 10 && local_date_shape?(first.raw) &&
+         peek.kind.whitespace? && peek.raw == " " &&
+         peek(1).kind.bare_key_or_atom? && local_time_shape?(peek(1).raw)
+        ws = consume
+        time_tok = consume
+        combined = first.raw + ws.raw + time_tok.raw
+        if peek.kind.dot?
+          consume
+          next_tok = consume
+          unless next_tok.kind.bare_key_or_atom?
+            error!(next_tok, "expected fractional second after '.'")
+          end
+          combined = combined + "." + next_tok.raw
+        end
+        if dt = ValueDecoder.try_decode_datetime(combined)
+          return dt
+        end
+        error!(first, "invalid datetime #{combined.inspect}")
+      end
+
       if peek.kind.dot?
         # Atom-Dot-Atom form: could be a fractional datetime or a
         # float. Try datetime first because a value like
@@ -446,6 +473,35 @@ module TOML
 
     private def error!(tok : Token, message : String) : NoReturn
       raise ParseError.new(message, tok.line, tok.column)
+    end
+
+    # Does `s` syntactically look like a `yyyy-mm-dd` local date?
+    # Used purely as a fast filter for the date+space+time form;
+    # full validation happens in `ValueDecoder.try_decode_datetime`.
+    private def local_date_shape?(s : String) : Bool
+      return false unless s.size == 10
+      bytes = s.to_slice
+      bytes[4] == '-'.ord && bytes[7] == '-'.ord &&
+        ascii_digit?(bytes[0]) && ascii_digit?(bytes[1]) &&
+        ascii_digit?(bytes[2]) && ascii_digit?(bytes[3]) &&
+        ascii_digit?(bytes[5]) && ascii_digit?(bytes[6]) &&
+        ascii_digit?(bytes[8]) && ascii_digit?(bytes[9])
+    end
+
+    # Does `s` syntactically *start* like a `hh:mm:ss` local time?
+    # The atom may carry a trailing offset (`Z`, `+07:00`) which we
+    # do not validate here.
+    private def local_time_shape?(s : String) : Bool
+      return false if s.size < 8
+      bytes = s.to_slice
+      bytes[2] == ':'.ord && bytes[5] == ':'.ord &&
+        ascii_digit?(bytes[0]) && ascii_digit?(bytes[1]) &&
+        ascii_digit?(bytes[3]) && ascii_digit?(bytes[4]) &&
+        ascii_digit?(bytes[6]) && ascii_digit?(bytes[7])
+    end
+
+    private def ascii_digit?(b : UInt8) : Bool
+      b >= '0'.ord && b <= '9'.ord
     end
   end
 end

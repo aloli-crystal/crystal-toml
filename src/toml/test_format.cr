@@ -66,24 +66,7 @@ module TOML
     private def ensure_table(root : Hash(String, Tree), path : Array(String)) : Hash(String, Tree)
       target = root
       path.each do |seg|
-        sub = target[seg]?
-        case sub
-        when Hash(String, Tree)
-          target = sub
-        when Array(Tree)
-          last = sub[-1]?
-          if last.is_a?(Hash(String, Tree))
-            target = last
-          else
-            new_table = {} of String => Tree
-            sub << new_table
-            target = new_table
-          end
-        else
-          new_table = {} of String => Tree
-          target[seg] = new_table
-          target = new_table
-        end
+        target = step_into(target, seg)
       end
       target
     end
@@ -91,14 +74,7 @@ module TOML
     private def ensure_array_of_tables(root : Hash(String, Tree), path : Array(String)) : Hash(String, Tree)
       parent = root
       path[0..-2].each do |seg|
-        sub = parent[seg]?
-        if sub.is_a?(Hash(String, Tree))
-          parent = sub
-        else
-          new_table = {} of String => Tree
-          parent[seg] = new_table
-          parent = new_table
-        end
+        parent = step_into(parent, seg)
       end
       last = path[-1]
       arr = parent[last]?
@@ -111,6 +87,30 @@ module TOML
         new_table = {} of String => Tree
         new_arr << new_table
         parent[last] = new_arr
+        new_table
+      end
+    end
+
+    # Walks one segment from `parent`. If the segment is already a
+    # table, descend. If it is an array of tables, descend into the
+    # *last* slot. Otherwise create a new table.
+    private def step_into(parent : Hash(String, Tree), seg : String) : Hash(String, Tree)
+      sub = parent[seg]?
+      case sub
+      when Hash(String, Tree)
+        sub
+      when Array(Tree)
+        last = sub[-1]?
+        if last.is_a?(Hash(String, Tree))
+          last
+        else
+          new_table = {} of String => Tree
+          sub << new_table
+          new_table
+        end
+      else
+        new_table = {} of String => Tree
+        parent[seg] = new_table
         new_table
       end
     end

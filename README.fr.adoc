@@ -13,6 +13,10 @@ des commentaires et de la mise en forme** lors d'un round-trip
 `parse → modification → écriture`. Crystal pur, aucune dépendance
 runtime.
 
+**Conformité 100 %** avec la suite officielle d'interop
+https://github.com/toml-lang/toml-test[`toml-lang/toml-test`] v2.1.0
+(205/205 valid, 473/473 invalid).
+
 == Pourquoi
 
 L'écosystème Crystal compte aujourd'hui un seul shard TOML,
@@ -79,10 +83,10 @@ File.write("vault.toml", doc.to_toml)
 
 == État du projet
 
-Ce shard est **en développement actif**. La version v0.1.0 n'est pas
-encore taguée. Voir `CRYSTAL-TOML-SPECS.adoc` dans le repo voisin
-`prod-crystal/` pour la spécification fonctionnelle et technique
-complète.
+**v0.1.0** — première version publique. Conformité totale avec
+TOML v1.0 par la suite officielle d'interop `toml-lang/toml-test`.
+Voir `CRYSTAL-TOML-SPECS.adoc` dans le repo voisin `prod-crystal/`
+pour la spécification fonctionnelle et technique complète.
 
 == Licence
 

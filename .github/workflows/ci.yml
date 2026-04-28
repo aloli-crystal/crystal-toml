@@ -40,5 +40,5 @@ jobs:
           chmod +x /tmp/toml-test
           /tmp/toml-test version
 
-      - name: Run toml-test interop suite (informational)
-        run: /tmp/toml-test test -decoder ./bin/crystal-toml-decoder || true
+      - name: Run toml-test interop suite
+        run: /tmp/toml-test test -decoder ./bin/crystal-toml-decoder

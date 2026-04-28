@@ -3,11 +3,12 @@
 :toc-title: Versions
 :toclevels: 2
 
-== Non publié (candidat v0.1.0)
+== v0.1.0 — 2026-04-28
 
-Première implémentation de TOML v1.0 en Crystal pur, avec
-préservation des commentaires et de la mise en forme lors d'un
-round-trip `parse → modification → écriture`.
+Première version publique de `crystal-toml`. Parser et sérialiseur
+TOML v1.0 en Crystal pur, avec préservation des commentaires et de
+la mise en forme lors d'un round-trip
+`parse → modification → écriture`.
 
 API publique
 ------------
@@ -27,21 +28,19 @@ API publique
   `#set_with_comment(key, value, comment)`, `#delete(key)` —
   préserve le formatage de la ligne autour à la mise à jour.
 
-Conformité avec `toml-lang/toml-test` v2.1.0 (TOML v1.0)
--------------------------------------------------------
+Conformité
+----------
 
-* **Tests valid   : 191 / 205  (93,2 %)**
-* **Tests invalid : 432 / 473  (91,3 %)**
-* **Total        : 623 / 678  (91,9 %)**
+**Conformité totale avec TOML v1.0**, mesurée par la suite
+officielle d'interop `toml-lang/toml-test` v2.1.0 :
 
-Manques restants (suivis, à traiter avant le tag v0.1.0) :
+* Tests valid   : **205 / 205** (100 %)
+* Tests invalid : **473 / 473** (100 %)
+* Total        : **678 / 678** (100 %)
 
-* Validation des conflits entre dotted-keys et headers de tables,
-  extension d'inline table après déclaration.
-* Rejet plus strict de l'UTF-8 invalide et des caractères de
-  contrôle dans les strings.
-* Edge cases sur les multi-line basic strings avec triples-quotes
-  internes, et bornes RFC 3339 sur les années bissextiles.
+Le binaire decoder `bin/crystal-toml-decoder` est construit dans
+la CI et la suite est lancée à chaque push sur la branche
+`production`.
 
 Voir `CRYSTAL-TOML-SPECS.adoc` (dans le repo voisin `prod-crystal/`)
 pour la spécification complète.
