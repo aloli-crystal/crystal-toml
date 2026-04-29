@@ -1,9 +1,9 @@
-= crystal-toml
+= toml
 :toc: macro
 :toclevels: 2
 :source-language: crystal
 
-image:https://github.com/aloli-crystal/crystal-toml/actions/workflows/ci.yml/badge.svg[CI,link=https://github.com/aloli-crystal/crystal-toml/actions/workflows/ci.yml]
+image:https://github.com/aloli-crystal/toml/actions/workflows/ci.yml/badge.svg[CI,link=https://github.com/aloli-crystal/toml/actions/workflows/ci.yml]
 image:https://img.shields.io/badge/TOML-v1.0.0-blue[TOML v1.0,link=https://toml.io/en/v1.0.0]
 image:https://img.shields.io/badge/toml--test-100%25-brightgreen[toml-test 100%,link=https://github.com/toml-lang/toml-test]
 image:https://img.shields.io/badge/license-MIT-blue[License MIT,link=LICENSE]
@@ -18,11 +18,11 @@ round-trips. Pure Crystal, zero runtime dependencies.
 https://github.com/toml-lang/toml-test[`toml-lang/toml-test`] v2.1.0
 interop suite (205/205 valid tests, 473/473 invalid tests).
 
-API documentation : https://aloli-crystal.github.io/crystal-toml/
+API documentation : https://aloli-crystal.github.io/toml/
 
 toc::[]
 
-== Why crystal-toml
+== Why toml
 
 The Crystal ecosystem already has one TOML library,
 https://github.com/crystal-community/TOML.cr[`crystal-community/TOML.cr`].
@@ -37,7 +37,7 @@ cases this shard targets:
   declaration are lost. You can't read a config, modify one value,
   and write it back without diffing the entire file.
 
-`crystal-toml` is built around three goals:
+`toml` is built around three goals:
 
 . **TOML v1.0 conformance**, validated against the official
   `toml-lang/toml-test` interop suite (the only authoritative
@@ -57,7 +57,7 @@ annotations.
 
 == Conformance
 
-`crystal-toml` is validated on every CI run against the official
+`toml` is validated on every CI run against the official
 https://github.com/toml-lang/toml-test[`toml-lang/toml-test`] suite
 v2.1.0:
 
@@ -70,7 +70,7 @@ v2.1.0:
 | **Total**  | **678** | **678** | **100%**
 |===
 
-The decoder binary `bin/crystal-toml-decoder` is built and run as
+The decoder binary `bin/toml-decoder` is built and run as
 part of CI on every push to the `production` branch. A regression
 fails the build.
 
@@ -81,8 +81,8 @@ Add the dependency to your `shard.yml`:
 [source,yaml]
 ----
 dependencies:
-  crystal-toml:
-    github: aloli-crystal/crystal-toml
+  toml:
+    github: aloli-crystal/toml
     version: "~> 0.1"
 ----
 
@@ -102,7 +102,7 @@ and the original formatting. Drop-in compatible with
 
 [source,crystal]
 ----
-require "crystal-toml"
+require "toml"
 
 source = File.read("config.toml")
 config = TOML.parse_to_hash(source)
@@ -129,7 +129,7 @@ byte-level formatting :
 
 [source,crystal]
 ----
-require "crystal-toml"
+require "toml"
 
 doc = TOML.parse(File.read("vault.toml"))
 
@@ -284,7 +284,7 @@ new_src = doc.to_toml
 # every comment, blank line, and adjacent KV is byte-identical.
 ----
 
-This makes `crystal-toml` suitable for tooling that edits
+This makes `toml` suitable for tooling that edits
 human-authored TOML files (CI configs, secret vaults, project
 manifests) without introducing churn in version control diffs.
 
@@ -352,8 +352,8 @@ The migration is a one-line dependency change in `shard.yml`:
 [source,yaml]
 ----
 dependencies:
-  crystal-toml:                  # was: toml
-    github: aloli-crystal/crystal-toml
+  toml:
+    github: aloli-crystal/toml
     version: "~> 0.1"
 ----
 
@@ -361,7 +361,7 @@ And one method-name change in your code:
 
 [source,crystal]
 ----
-require "crystal-toml"
+require "toml"
 
 hash = TOML.parse_to_hash(File.read("config.toml"))
 ----
@@ -386,7 +386,7 @@ described above.
   decoded to an AST. Files in the megabyte range are fine; files
   in the gigabyte range are not the target use case.
 * **No encoder for toml-test.** The shard ships
-  `bin/crystal-toml-decoder` (TOML → JSON) but not the
+  `bin/toml-decoder` (TOML → JSON) but not the
   corresponding TOML encoder side. Round-trip parsing is fully
   validated, but the JSON-driven encoder side of the toml-test
   harness is left to a future release.
@@ -436,10 +436,10 @@ shards build
 bin/ameba
 
 # Build the toml-test decoder binary
-shards build crystal-toml-decoder
+shards build toml-decoder
 
 # Run the full toml-test interop suite (after downloading toml-test)
-toml-test test -decoder ./bin/crystal-toml-decoder
+toml-test test -decoder ./bin/toml-decoder
 ----
 
 Code style: `crystal tool format src/ spec/` is enforced in CI.

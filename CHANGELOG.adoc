@@ -3,6 +3,19 @@
 :toc-title: Versions
 :toclevels: 2
 
+== v0.1.1 — 2026-04-29
+
+=== Changed
+
+* **GitHub repository renamed** from `aloli-crystal/crystal-toml` to
+  `aloli-crystal/toml` (Aloli naming convention: original creations
+  drop the `crystal-` prefix). Old links redirect automatically.
+* `name:` field in `shard.yml` updated from `crystal-toml` to `toml`.
+* Entry-point file renamed `src/crystal-toml.cr` → `src/toml.cr`.
+  Consumer-side, `require "crystal-toml"` becomes `require "toml"`.
+* Decoder binary target renamed `crystal-toml-decoder` → `toml-decoder`
+  (`shards build toml-decoder` → `bin/toml-decoder`).
+
 == Unreleased
 
 Documentation:

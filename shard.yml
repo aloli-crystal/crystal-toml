@@ -1,5 +1,5 @@
-name: crystal-toml
-version: 0.1.0
+name: toml
+version: 0.1.1
 
 description: |
   TOML v1.0 parser and serializer for Crystal, with comment-and-format
@@ -16,7 +16,7 @@ crystal: ">= 1.19.0"
 license: MIT
 
 targets:
-  crystal-toml-decoder:
+  toml-decoder:
     main: src/cli/decoder.cr
 
 development_dependencies:
