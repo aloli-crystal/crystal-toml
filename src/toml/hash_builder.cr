@@ -5,7 +5,7 @@ module TOML
   # Recursive union of every type a TOML value can decode to.
   #
   # Mirrors the type returned by `crystal-community/TOML.cr` so a
-  # consumer can drop in `crystal-toml` without rewriting their
+  # consumer can drop in `toml` without rewriting their
   # call sites that pattern-match on the value.
   alias Type = Nil | String | Int64 | Float64 | Bool | Time | Time::Span |
                Array(Type) | Hash(String, Type)

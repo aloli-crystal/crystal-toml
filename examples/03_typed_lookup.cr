@@ -15,7 +15,7 @@
 #
 #     crystal run examples/03_typed_lookup.cr
 
-require "../src/crystal-toml"
+require "../src/toml"
 
 source = <<-TOML
   app_name = "Aloli"

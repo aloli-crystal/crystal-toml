@@ -1,4 +1,4 @@
-= crystal-toml — Examples
+= toml — Examples
 :toc: macro
 
 Self-contained example programs you can run with `crystal run`.

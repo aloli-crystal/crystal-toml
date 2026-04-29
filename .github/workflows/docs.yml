@@ -34,7 +34,7 @@ jobs:
           version="$(awk '/^version:/ {print $2; exit}' shard.yml)"
           crystal docs \
             --output=docs \
-            --project-name=crystal-toml \
+            --project-name=toml \
             --project-version="$version"
 
       - name: Upload artifact

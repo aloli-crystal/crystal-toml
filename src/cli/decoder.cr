@@ -6,7 +6,7 @@
 # uses the exit code to discriminate the `valid/` and `invalid/`
 # fixtures).
 
-require "../crystal-toml"
+require "../toml"
 require "../toml/test_format"
 
 input = STDIN.gets_to_end

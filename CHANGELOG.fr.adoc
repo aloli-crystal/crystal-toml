@@ -7,13 +7,13 @@
 
 === Modifié
 
-* **Repo GitHub renommé** `aloli-crystal/crystal-toml` → `aloli-crystal/toml`
+* **Repo GitHub renommé** `aloli-crystal/toml` → `aloli-crystal/toml`
   (convention de nommage Aloli : les créations originales abandonnent
   le préfixe `crystal-`). Les anciens liens redirigent automatiquement.
-* Champ `name:` du `shard.yml` mis à jour de `crystal-toml` à `toml`.
-* Fichier d'entrée renommé `src/crystal-toml.cr` → `src/toml.cr`.
-  Côté consommateur, `require "crystal-toml"` devient `require "toml"`.
-* Cible binaire du décodeur renommée `crystal-toml-decoder` →
+* Champ `name:` du `shard.yml` mis à jour de `toml` à `toml`.
+* Fichier d'entrée renommé `src/toml.cr` → `src/toml.cr`.
+  Côté consommateur, `require "toml"` devient `require "toml"`.
+* Cible binaire du décodeur renommée `toml-decoder` →
   `toml-decoder` (`shards build toml-decoder` → `bin/toml-decoder`).
 
 == Non publié
@@ -29,12 +29,12 @@ Documentation :
   drop-in `parse_to_hash`, une édition de coffre de secrets
   annoté, et la lecture typée par path pointé.
 * Documentation API générée par `crystal docs` et déployée sur
-  https://aloli-crystal.github.io/crystal-toml/ à chaque push
+  https://aloli-crystal.github.io/toml/ à chaque push
   sur `production` (workflow GitHub Pages).
 
 == v0.1.0 — 2026-04-28
 
-Première version publique de `crystal-toml`. Parser et sérialiseur
+Première version publique de `toml`. Parser et sérialiseur
 TOML v1.0 en Crystal pur, avec préservation des commentaires et de
 la mise en forme lors d'un round-trip
 `parse → modification → écriture`.
@@ -67,7 +67,7 @@ officielle d'interop `toml-lang/toml-test` v2.1.0 :
 * Tests invalid : **473 / 473** (100 %)
 * Total        : **678 / 678** (100 %)
 
-Le binaire decoder `bin/crystal-toml-decoder` est construit dans
+Le binaire decoder `bin/toml-decoder` est construit dans
 la CI et la suite est lancée à chaque push sur la branche
 `production`.
 

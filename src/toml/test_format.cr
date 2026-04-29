@@ -11,7 +11,7 @@ module TOML
   # always a JSON string (even for integers and floats). Tables
   # become regular JSON objects, arrays become JSON arrays.
   #
-  # Internal — exposed only so `bin/crystal-toml-decoder` can import
+  # Internal — exposed only so `bin/toml-decoder` can import
   # it. Not part of the public API.
   module TestFormat
     extend self

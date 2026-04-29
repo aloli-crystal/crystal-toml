@@ -30,7 +30,7 @@ jobs:
         run: bin/ameba
 
       - name: Build toml-test decoder binary
-        run: shards build crystal-toml-decoder
+        run: shards build toml-decoder
 
       - name: Download toml-test
         run: |
@@ -41,4 +41,4 @@ jobs:
           /tmp/toml-test version
 
       - name: Run toml-test interop suite
-        run: /tmp/toml-test test -decoder ./bin/crystal-toml-decoder
+        run: /tmp/toml-test test -decoder ./bin/toml-decoder

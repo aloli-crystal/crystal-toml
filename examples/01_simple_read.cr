@@ -9,7 +9,7 @@
 #
 #     crystal run examples/01_simple_read.cr
 
-require "../src/crystal-toml"
+require "../src/toml"
 
 source = <<-TOML
   # Application configuration

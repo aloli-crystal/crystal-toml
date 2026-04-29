@@ -1,7 +1,7 @@
 # Example 02 — Editing a secret vault while keeping comments
 # ===========================================================
 #
-# This is the use case `crystal-toml` was originally built for :
+# This is the use case `toml` was originally built for :
 # storing secrets in a TOML file annotated with rotation comments,
 # editing one secret programmatically (e.g. after a rotation), and
 # writing the file back without losing the surrounding annotations.
@@ -10,7 +10,7 @@
 #
 #     crystal run examples/02_secret_vault.cr
 
-require "../src/crystal-toml"
+require "../src/toml"
 
 # Fictitious vault — in real life this would be the decrypted
 # contents of an `age`-encrypted file managed by `crystal-secrets`.
