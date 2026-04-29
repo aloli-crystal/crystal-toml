@@ -3,7 +3,6 @@ name: Deploy API docs
 on:
   push:
     branches: [production]
-    tags: ["v*"]
   workflow_dispatch:
 
 permissions:
